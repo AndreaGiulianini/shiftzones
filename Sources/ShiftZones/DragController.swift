@@ -10,7 +10,7 @@ final class DragController {
         /// Left button down, no movement yet.
         case pressed
         /// The mouse is moving: checking whether it is moving the window under the cursor.
-        case candidate(window: AXWindow, initialFrame: CGRect, start: CGPoint)
+        case candidate(window: AXWindow, initialFrame: CGRect)
         case dragging(AXWindow)
         /// A drag that doesn't move a window (text selection, resizing…).
         case ignored
@@ -82,19 +82,18 @@ final class DragController {
         case .pressed:
             // Look up the window only on the first movement: no AX calls on plain clicks.
             let point = ScreenGeometry.mouseLocation()
-            if let window = AXWindow.under(point), let frame = window.frame {
-                phase = .candidate(window: window, initialFrame: frame, start: point)
+            if let window = AXWindow.under(point), let frame = window.liveFrame {
+                phase = .candidate(window: window, initialFrame: frame)
             } else {
                 phase = .ignored
             }
-        case let .candidate(window, initialFrame, start):
-            guard let frame = window.frame else { phase = .ignored; return }
+        case let .candidate(window, initialFrame):
+            // Keep checking until the button is released: some apps start moving the window late.
+            guard let frame = window.liveFrame else { phase = .ignored; return }
             if !frame.size.isClose(to: initialFrame.size, tolerance: 1) {
                 phase = .ignored
             } else if frame.origin != initialFrame.origin {
                 beginDrag(window, frame: frame)
-            } else if ScreenGeometry.mouseLocation().distance(to: start) > 48 {
-                phase = .ignored
             }
         case .dragging:
             refresh()

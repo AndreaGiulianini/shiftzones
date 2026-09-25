@@ -41,6 +41,17 @@ struct AXWindow {
         return CGRect(origin: origin, size: size)
     }
 
+    /// Frame according to the window server (AX coordinates). During a drag it is updated right away,
+    /// while `frame` comes from the owning app and can lag several mouse events behind.
+    var liveFrame: CGRect? {
+        guard let id = windowID,
+              let info = (CGWindowListCopyWindowInfo(.optionIncludingWindow, id) as? [[String: Any]])?.first,
+              let bounds = info[kCGWindowBounds as String] as? NSDictionary,
+              let rect = CGRect(dictionaryRepresentation: bounds as CFDictionary)
+        else { return frame }
+        return rect
+    }
+
     var isResizable: Bool {
         var settable: DarwinBoolean = false
         return AXUIElementIsAttributeSettable(element, kAXSizeAttribute as CFString, &settable) == .success
