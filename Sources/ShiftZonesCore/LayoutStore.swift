@@ -13,6 +13,7 @@ public final class LayoutStore {
     private var fileOrder: [String] = []
     private var listedAsConnected: Set<String> = []
     private var connected: [MonitorDescriptor] = []
+    private var hasUpdated = false
     private var lastText: String?
 
     public static var defaultFileURL: URL {
@@ -34,7 +35,10 @@ public final class LayoutStore {
 
     /// Call at launch and on every display change, with the connected displays from left to right.
     public func update(connected newConnected: [MonitorDescriptor]) {
-        let isFirstUpdate = connected.isEmpty
+        // While displays are being reconfigured (sleep, lid closed) macOS can briefly report none at all.
+        guard !newConnected.isEmpty else { return }
+        let isFirstUpdate = !hasUpdated
+        hasUpdated = true
         let setChanged = Set(newConnected.map(\.id)) != Set(connected.map(\.id))
         connected = newConnected
         reloadFile()

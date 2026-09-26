@@ -31,7 +31,7 @@ final class ZoneEditor: NSObject {
     }
 
     func show() {
-        activateApp()
+        NSApp.bringToFront()
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(canvas)
         window.addChildWindow(toolbar, ordered: .above)
@@ -194,16 +194,7 @@ final class ToolbarPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
-@MainActor
-func activateApp() {
-    if #available(macOS 14.0, *) {
-        NSApp.activate()
-    } else {
-        NSApp.activate(ignoringOtherApps: true)
-    }
-}
-
-extension NSImage {
+private extension NSImage {
     /// Resizable rounded-corner mask for NSVisualEffectView.
     static func roundedMask(radius: CGFloat) -> NSImage {
         let edge = radius * 2 + 1

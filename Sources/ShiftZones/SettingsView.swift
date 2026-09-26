@@ -20,8 +20,8 @@ final class SettingsModel: ObservableObject {
     let editScreen: (String) -> Void
 
     var filePath: String { (store.fileURL.path as NSString).abbreviatingWithTildeInPath }
-    func openFile() { ZonesFile.open(store.fileURL) }
-    func revealFile() { ZonesFile.reveal(store.fileURL) }
+    func openFile() { store.openInEditor() }
+    func revealFile() { store.revealInFinder() }
 
     init(store: LayoutStore, editScreen: @escaping (String) -> Void) {
         self.store = store
@@ -56,12 +56,12 @@ final class SettingsModel: ObservableObject {
 struct SettingsView: View {
     @ObservedObject var model: SettingsModel
 
-    @AppStorage(SettingsKey.enabled) private var enabled = true
-    @AppStorage(SettingsKey.activationModifier) private var activation = ModifierKey.shift
-    @AppStorage(SettingsKey.spanModifier) private var span = ModifierKey.control
-    @AppStorage(SettingsKey.showOnAllScreens) private var showOnAllScreens = true
-    @AppStorage(SettingsKey.restoreSizeOnUnsnap) private var restoreSize = true
-    @AppStorage(SettingsKey.spacing) private var spacing = 8.0
+    @AppStorage(PreferencesKey.enabled) private var enabled = Preferences.Default.enabled
+    @AppStorage(PreferencesKey.activationModifier) private var activation = Preferences.Default.activationModifier
+    @AppStorage(PreferencesKey.spanModifier) private var span = Preferences.Default.spanModifier
+    @AppStorage(PreferencesKey.showOnAllScreens) private var showOnAllScreens = Preferences.Default.showOnAllScreens
+    @AppStorage(PreferencesKey.restoreSizeOnUnsnap) private var restoreSize = Preferences.Default.restoreSizeOnUnsnap
+    @AppStorage(PreferencesKey.spacing) private var spacing = Preferences.Default.spacing
 
     var body: some View {
         Form {
@@ -88,7 +88,7 @@ struct SettingsView: View {
                 Toggle("Zones enabled", isOn: $enabled)
                 Picker("Hold to use zones", selection: $activation) {
                     ForEach(ModifierKey.allCases) { key in
-                        Text(key == .none ? "No key (zones always active)" : key.label).tag(key)
+                        Text(key == .off ? "No key (zones always active)" : key.label).tag(key)
                     }
                 }
                 Picker("Key to combine zones", selection: $span) {
@@ -168,7 +168,7 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .frame(minWidth: 540, minHeight: 480)
         .onChange(of: activation) { newValue in
-            if span == newValue { span = .none }
+            if span == newValue { span = .off }
         }
     }
 }

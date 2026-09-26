@@ -23,7 +23,7 @@ final class OverlayController {
     ///   - targetFrame: final frame (AX coordinates), outlined when several zones are combined.
     ///   - windowID: the dragged window; zones are drawn right below it.
     func show(activeScreenID: String, highlighted: Set<UUID>, targetFrame: CGRect?, below windowID: CGWindowID?) {
-        let screens = NSScreen.screens.filter { Settings.showOnAllScreens || $0.stableID == activeScreenID }
+        let screens = NSScreen.screens.filter { Preferences.showOnAllScreens || $0.stableID == activeScreenID }
         let shownIDs = Set(screens.map(\.stableID))
         for (id, window) in windows where !shownIDs.contains(id) {
             window.orderOut(nil)
@@ -34,7 +34,7 @@ final class OverlayController {
             let isActive = id == activeScreenID
             window.zoneView.configure(screen: screen,
                                       zones: store.layout(for: screen).zones,
-                                      spacing: Settings.spacing,
+                                      spacing: Preferences.spacing,
                                       highlighted: isActive ? highlighted : [],
                                       targetFrame: isActive ? targetFrame : nil)
             if !window.isVisible { present(window, below: windowID) }
@@ -109,14 +109,17 @@ final class OverlayView: NSView {
     private var items: [Item] = []
     private var targetFrame: CGRect?
 
+    /// Zones are drawn at least this far apart, only to make them easier to tell apart.
+    private static let minimumVisualSpacing = 6.0
+    private static let cornerRadius: CGFloat = 12
+
     override var isFlipped: Bool { true }
 
     func configure(screen: NSScreen, zones: [Zone], spacing: Double, highlighted: Set<UUID>, targetFrame: CGRect?) {
         let origin = screen.axFrame.origin
         let area = screen.axVisibleFrame
-        // A minimum gap between zones only makes them easier to tell apart.
         let newItems = zones.enumerated().map { index, zone in
-            Item(frame: ZoneGeometry.windowFrame(of: zone.rect, in: area, spacing: max(spacing, 6))
+            Item(frame: ZoneGeometry.windowFrame(of: zone.rect, in: area, spacing: max(spacing, Self.minimumVisualSpacing))
                     .offsetBy(dx: -origin.x, dy: -origin.y),
                  number: index + 1,
                  highlighted: highlighted.contains(zone.id))
@@ -131,7 +134,7 @@ final class OverlayView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let accent = NSColor.controlAccentColor
         for item in items {
-            let path = NSBezierPath(roundedRect: item.frame.insetBy(dx: 1.5, dy: 1.5), xRadius: 12, yRadius: 12)
+            let path = NSBezierPath(roundedRect: item.frame.insetBy(dx: 1.5, dy: 1.5), xRadius: Self.cornerRadius, yRadius: Self.cornerRadius)
             (item.highlighted ? accent.withAlphaComponent(0.45) : NSColor(white: 0.08, alpha: 0.35)).setFill()
             path.fill()
             path.lineWidth = item.highlighted ? 3 : 1.5
@@ -140,7 +143,7 @@ final class OverlayView: NSView {
             drawNumber(item.number, in: item.frame, emphasized: item.highlighted)
         }
         if let targetFrame {
-            let path = NSBezierPath(roundedRect: targetFrame.insetBy(dx: 2, dy: 2), xRadius: 12, yRadius: 12)
+            let path = NSBezierPath(roundedRect: targetFrame.insetBy(dx: 2, dy: 2), xRadius: Self.cornerRadius, yRadius: Self.cornerRadius)
             path.lineWidth = 4
             accent.setStroke()
             path.stroke()

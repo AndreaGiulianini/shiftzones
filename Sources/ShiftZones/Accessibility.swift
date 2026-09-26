@@ -52,6 +52,12 @@ struct AXWindow {
         return rect
     }
 
+    /// False once the window has been closed.
+    var exists: Bool {
+        var role: CFTypeRef?
+        return AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role) != .invalidUIElement
+    }
+
     var isResizable: Bool {
         var settable: DarwinBoolean = false
         return AXUIElementIsAttributeSettable(element, kAXSizeAttribute as CFString, &settable) == .success
@@ -109,11 +115,14 @@ extension AXWindow: Hashable {
 }
 
 extension AXWindow {
+    /// Upper bound for AX calls, so an unresponsive app can't stall event handling.
+    private static let messagingTimeout: Float = 0.25
+
     /// Window of another app under the given point (AX coordinates).
     static func under(_ point: CGPoint) -> AXWindow? {
         let ownPID = ProcessInfo.processInfo.processIdentifier
         let systemWide = AXUIElementCreateSystemWide()
-        AXUIElementSetMessagingTimeout(systemWide, 0.25)
+        AXUIElementSetMessagingTimeout(systemWide, messagingTimeout)
         var hit: AXUIElement?
         if AXUIElementCopyElementAtPosition(systemWide, Float(point.x), Float(point.y), &hit) == .success,
            let hit, let window = window(containing: hit) {

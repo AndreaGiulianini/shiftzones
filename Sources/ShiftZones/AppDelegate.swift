@@ -19,7 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var zonesWatcher: DirectoryWatcher?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        Settings.registerDefaults()
+        Preferences.registerDefaults()
         store.update(connected: ScreenGeometry.connectedMonitors())
         setupStatusItem()
 
@@ -88,7 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func updateStatusIcon() {
         let symbol = store.error == nil ? "rectangle.split.3x1" : "exclamationmark.triangle"
         statusItem.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "ShiftZones")
-        statusItem.button?.appearsDisabled = !Settings.enabled || !Accessibility.isTrusted
+        statusItem.button?.appearsDisabled = !Preferences.enabled || !Accessibility.isTrusted
     }
 
     private func zonesFileChanged() {
@@ -114,11 +114,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         let toggle = item("Zones Enabled", #selector(toggleEnabled))
-        toggle.state = Settings.enabled ? .on : .off
+        toggle.state = Preferences.enabled ? .on : .off
         menu.addItem(toggle)
 
-        let activation = Settings.activationModifier
-        let hint = NSMenuItem(title: activation == .none
+        let activation = Preferences.activationModifier
+        let hint = NSMenuItem(title: activation == .off
                               ? "Drag a window onto a zone"
                               : "Drag a window while holding \(activation.label)",
                               action: nil, keyEquivalent: "")
@@ -157,7 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func toggleEnabled() {
-        Settings.enabled.toggle()
+        Preferences.enabled.toggle()
         updateStatusIcon()
     }
 
@@ -166,11 +166,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func openZonesFile() {
-        ZonesFile.open(store.fileURL)
+        store.openInEditor()
     }
 
     @objc private func revealZonesFile() {
-        ZonesFile.reveal(store.fileURL)
+        store.revealInFinder()
     }
 
     @objc private func editZonesFromMenu(_ sender: NSMenuItem) {
@@ -220,24 +220,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             window.center()
             settingsWindow = window
         }
-        activateApp()
+        NSApp.bringToFront()
         settingsWindow?.makeKeyAndOrderFront(nil)
-    }
-}
-
-/// Opens the zones file in the default text editor.
-enum ZonesFile {
-    static func open(_ url: URL) {
-        let workspace = NSWorkspace.shared
-        if workspace.urlForApplication(toOpen: url) != nil {
-            workspace.open(url)
-        } else if let textEdit = workspace.urlForApplication(withBundleIdentifier: "com.apple.TextEdit") {
-            // No app associated with .conf files: fall back to TextEdit.
-            workspace.open([url], withApplicationAt: textEdit, configuration: NSWorkspace.OpenConfiguration())
-        }
-    }
-
-    static func reveal(_ url: URL) {
-        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 }

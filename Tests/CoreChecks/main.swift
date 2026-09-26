@@ -203,6 +203,10 @@ check(rects(store.layout(forDisplay: "WIDE", aspectRatio: 1).zones) == [[0, 0, 0
 check(store.layout(forDisplay: "LAPTOP", aspectRatio: 1).zones.count == 2, "new display: default zones")
 check(position("id = LAPTOP")! < position("id = WIDE")!, "displays ordered left to right")
 
+let beforeReconfiguration = fileText()
+store.update(connected: [])
+check(fileText() == beforeReconfiguration, "no displays reported (reconfiguration): file left as is")
+
 store.update(connected: [wide])
 check(position("Disconnected displays")! < position("id = LAPTOP")!, "display disconnected: moved to the bottom")
 store.update(connected: [laptop, wide])

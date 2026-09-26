@@ -36,12 +36,15 @@ final class DragController {
     private var spanAnchor: (screenID: String, zone: Zone)?
     private var snapped: [AXWindow: SnapRecord] = [:]
 
+    /// Some apps finish their own drag after mouseUp, so the frame is applied again after this delay.
+    private static let reapplyDelay: TimeInterval = 0.1
+    /// Past this many remembered windows, the ones that have been closed are forgotten.
+    private static let snapRecordLimit = 64
+
     init(store: LayoutStore, overlay: OverlayController) {
         self.store = store
         self.overlay = overlay
     }
-
-    var isRunning: Bool { monitor != nil }
 
     func start() {
         guard monitor == nil else { return }
@@ -52,16 +55,10 @@ final class DragController {
         }
     }
 
-    func stop() {
-        if let monitor { NSEvent.removeMonitor(monitor) }
-        monitor = nil
-        reset()
-    }
-
     // MARK: - Events
 
     private func handle(_ event: NSEvent) {
-        guard Settings.enabled else { return }
+        guard Preferences.enabled else { return }
         switch event.type {
         case .leftMouseDown:
             reset()
@@ -104,7 +101,7 @@ final class DragController {
 
     private func beginDrag(_ window: AXWindow, frame: CGRect) {
         phase = .dragging(window)
-        if Settings.restoreSizeOnUnsnap, let record = snapped.removeValue(forKey: window),
+        if Preferences.restoreSizeOnUnsnap, let record = snapped.removeValue(forKey: window),
            frame.size.isClose(to: record.snappedFrame.size) {
             restore(window, from: frame, to: record.originalSize)
         }
@@ -124,13 +121,12 @@ final class DragController {
         guard case let .dragging(window) = phase, let target else { return }
         let originalSize = snapped[window]?.originalSize ?? window.frame?.size
         window.setFrame(target.frame)
-        // Some apps finish their own drag after mouseUp: apply the frame again.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.reapplyDelay) {
             if let frame = window.frame, !frame.isClose(to: target.frame) {
                 window.setFrame(target.frame)
             }
         }
-        if snapped.count > 256 { snapped.removeAll() }
+        if snapped.count >= Self.snapRecordLimit { snapped = snapped.filter { $0.key.exists } }
         if let originalSize {
             snapped[window] = SnapRecord(originalSize: originalSize, snappedFrame: target.frame)
         }
@@ -139,13 +135,13 @@ final class DragController {
     // MARK: - Zones
 
     private var activationHeld: Bool {
-        let activation = Settings.activationModifier
-        return activation == .none || activation.isHeld(in: NSEvent.modifierFlags)
+        let activation = Preferences.activationModifier
+        return activation == .off || activation.isHeld(in: NSEvent.modifierFlags)
     }
 
     private var spanHeld: Bool {
-        let span = Settings.spanModifier
-        return span != Settings.activationModifier && span.isHeld(in: NSEvent.modifierFlags)
+        let span = Preferences.spanModifier
+        return span != Preferences.activationModifier && span.isHeld(in: NSEvent.modifierFlags)
     }
 
     /// Updates the highlighted zone and the overlay from the cursor and the held keys.
@@ -178,7 +174,7 @@ final class DragController {
         if let bounds = ZoneGeometry.boundingRect(of: selection) {
             target = SnapTarget(screenID: screenID,
                                 zoneIDs: Set(selection.map(\.id)),
-                                frame: ZoneGeometry.windowFrame(of: bounds, in: area, spacing: Settings.spacing))
+                                frame: ZoneGeometry.windowFrame(of: bounds, in: area, spacing: Preferences.spacing))
         } else {
             target = nil
         }

@@ -274,7 +274,7 @@ final class ZoneCanvasView: NSView {
         (selected ? NSColor.white : accent.withAlphaComponent(0.9)).setStroke()
         path.stroke()
 
-        let windowSize = ZoneGeometry.windowFrame(of: zone.rect, in: area, spacing: Settings.spacing).size
+        let windowSize = ZoneGeometry.windowFrame(of: zone.rect, in: area, spacing: Preferences.spacing).size
         let numberFont = NSFont.systemFont(ofSize: min(64, max(16, min(rect.width, rect.height) / 5)), weight: .bold)
         drawCentered("\(number)", in: rect.offsetBy(dx: 0, dy: -12), font: numberFont, color: .white)
         drawCentered("\(Int(windowSize.width)) × \(Int(windowSize.height))",

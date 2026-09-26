@@ -119,10 +119,13 @@ Sources/ShiftZones/       menu bar app
   OverlayController.swift transparent windows that show the zones while dragging
   ZoneEditor.swift        full-screen editor + toolbar
   ZoneCanvasView.swift    zone interaction and drawing in the editor
-  SettingsView.swift      settings (SwiftUI)
+  SettingsView.swift      settings window (SwiftUI)
+  Preferences.swift       preferences in UserDefaults and their defaults
   Accessibility.swift     reading and moving other apps' windows
   Screens.swift           stable display identifiers, coordinate conversions
+  LayoutStore+AppKit.swift zones for an NSScreen, opening the zones file
   DirectoryWatcher.swift  watches the zones file (FSEvents)
+  AppKitHelpers.swift     small AppKit and geometry helpers
 Tests/CoreChecks/         checks run with `swift run CoreChecks`
 scripts/                  build, run, local signing certificate, icon generation
 ```
