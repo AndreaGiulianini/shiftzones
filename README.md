@@ -1,8 +1,14 @@
 # ShiftZones
 
+[![CI](https://github.com/AndreaGiulianini/shiftzones/actions/workflows/ci.yml/badge.svg)](https://github.com/AndreaGiulianini/shiftzones/actions/workflows/ci.yml)
+
 Window zones for macOS, in the style of PowerToys **FancyZones**: define zones for each display, drag a window
 while holding **⇧ Shift** and drop it on a zone — the window takes the zone's position and size. No keyboard
 shortcuts to learn.
+
+![Zones shown while dragging a window, with the zone under the cursor highlighted](docs/zones.png)
+
+![The full-screen zone editor with its toolbar](docs/editor.png)
 
 ## Features
 
@@ -38,6 +44,9 @@ swift run CoreChecks      # checks for the logic (templates, geometry, editor, z
 ```
 
 To install it, move `build/ShiftZones.app` to `/Applications`.
+
+The checks are a small executable rather than an XCTest target so that they run with just the Command Line
+Tools, which don't ship XCTest.
 
 ### Accessibility permission
 
@@ -142,3 +151,7 @@ scripts/                  build, run, local signing certificate, icon generation
    cursor.
 4. On release it sets position and size through the Accessibility API (and applies them again after 100 ms
    for apps that finish their drag late).
+
+## License
+
+MIT — see [LICENSE](LICENSE).
