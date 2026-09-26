@@ -2,7 +2,7 @@ import Foundation
 
 /// Rectangle normalized (0...1) to the usable area of a display.
 /// The origin is at the top-left, as in Accessibility API coordinates.
-public struct ZoneRect: Codable, Hashable {
+public struct ZoneRect: Codable, Hashable, Sendable {
     public var x: Double
     public var y: Double
     public var width: Double
@@ -40,7 +40,7 @@ public struct ZoneRect: Codable, Hashable {
     }
 }
 
-public struct Zone: Codable, Hashable, Identifiable {
+public struct Zone: Codable, Hashable, Identifiable, Sendable {
     public var id: UUID
     public var rect: ZoneRect
 
@@ -51,7 +51,7 @@ public struct Zone: Codable, Hashable, Identifiable {
 }
 
 /// The zones of one display. An empty layout turns zones off on that display.
-public struct ZoneLayout: Codable, Hashable {
+public struct ZoneLayout: Codable, Hashable, Sendable {
     public var zones: [Zone]
 
     public init(zones: [Zone] = []) {

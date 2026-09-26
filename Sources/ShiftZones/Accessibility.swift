@@ -173,13 +173,13 @@ private extension AXUIElement {
 
     func element(of name: String) -> AXUIElement? {
         guard let value = attribute(name), CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
-        return unsafeBitCast(value, to: AXUIElement.self)
+        return unsafeDowncast(value, to: AXUIElement.self)
     }
 
     func elements(of name: String) -> [AXUIElement] {
         guard let values = attribute(name) as? [AnyObject] else { return [] }
         return values.compactMap {
-            CFGetTypeID($0) == AXUIElementGetTypeID() ? unsafeBitCast($0, to: AXUIElement.self) : nil
+            CFGetTypeID($0) == AXUIElementGetTypeID() ? unsafeDowncast($0, to: AXUIElement.self) : nil
         }
     }
 
@@ -195,6 +195,6 @@ private extension AXUIElement {
 
     private func axValue(of name: String) -> AXValue? {
         guard let value = attribute(name), CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
-        return unsafeBitCast(value, to: AXValue.self)
+        return unsafeDowncast(value, to: AXValue.self)
     }
 }

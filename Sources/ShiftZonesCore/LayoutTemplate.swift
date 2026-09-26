@@ -1,7 +1,7 @@
 import Foundation
 
 /// Starting templates, inspired by FancyZones.
-public enum LayoutTemplate: String, CaseIterable, Codable, Identifiable {
+public enum LayoutTemplate: String, CaseIterable, Codable, Identifiable, Sendable {
     case columns
     case rows
     case grid

@@ -5,17 +5,6 @@ import ShiftZonesCore
 /// shows the zones and moves the window into the zone under the cursor on release.
 @MainActor
 final class DragController {
-    private enum Phase {
-        case idle
-        /// Left button down, no movement yet.
-        case pressed
-        /// The mouse is moving: checking whether it is moving the window under the cursor.
-        case candidate(window: AXWindow, initialFrame: CGRect)
-        case dragging(AXWindow)
-        /// A drag that doesn't move a window (text selection, resizing…).
-        case ignored
-    }
-
     private struct SnapTarget {
         let screenID: String
         let zoneIDs: Set<UUID>
@@ -31,7 +20,7 @@ final class DragController {
     private let store: LayoutStore
     private let overlay: OverlayController
     private var monitor: Any?
-    private var phase: Phase = .idle
+    private var detector = WindowDragDetector<AXWindow>()
     private var target: SnapTarget?
     private var spanAnchor: (screenID: String, zone: Zone)?
     private var snapped: [AXWindow: SnapRecord] = [:]
@@ -62,45 +51,30 @@ final class DragController {
         switch event.type {
         case .leftMouseDown:
             reset()
-            phase = .pressed
+            detector.mouseDown()
         case .leftMouseDragged:
             mouseDragged()
         case .leftMouseUp:
             mouseUp()
         case .flagsChanged:
-            if case .dragging = phase { refresh() }
+            if detector.draggedWindow != nil { refresh() }
         default:
             break
         }
     }
 
     private func mouseDragged() {
-        switch phase {
-        case .pressed:
-            // Look up the window only on the first movement: no AX calls on plain clicks.
-            let point = ScreenGeometry.mouseLocation()
-            if let window = AXWindow.under(point), let frame = window.liveFrame {
-                phase = .candidate(window: window, initialFrame: frame)
-            } else {
-                phase = .ignored
-            }
-        case let .candidate(window, initialFrame):
-            // Keep checking until the button is released: some apps start moving the window late.
-            guard let frame = window.liveFrame else { phase = .ignored; return }
-            if !frame.size.isClose(to: initialFrame.size, tolerance: 1) {
-                phase = .ignored
-            } else if frame.origin != initialFrame.origin {
-                beginDrag(window, frame: frame)
-            }
-        case .dragging:
+        guard detector.draggedWindow == nil else {
             refresh()
-        case .idle, .ignored:
-            break
+            return
         }
+        // The live frame comes from the window server: the Accessibility one lags behind during a drag.
+        let started = detector.mouseDragged(windowUnderCursor: { AXWindow.under(ScreenGeometry.mouseLocation()) },
+                                            frame: { $0.liveFrame })
+        if let started { beginDrag(started.window, frame: started.frame) }
     }
 
     private func beginDrag(_ window: AXWindow, frame: CGRect) {
-        phase = .dragging(window)
         if Preferences.restoreSizeOnUnsnap, let record = snapped.removeValue(forKey: window),
            frame.size.isClose(to: record.snappedFrame.size) {
             restore(window, from: frame, to: record.originalSize)
@@ -118,7 +92,7 @@ final class DragController {
 
     private func mouseUp() {
         defer { reset() }
-        guard case let .dragging(window) = phase, let target else { return }
+        guard let window = detector.draggedWindow, let target else { return }
         let originalSize = snapped[window]?.originalSize ?? window.frame?.size
         window.setFrame(target.frame)
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.reapplyDelay) {
@@ -146,7 +120,7 @@ final class DragController {
 
     /// Updates the highlighted zone and the overlay from the cursor and the held keys.
     private func refresh() {
-        guard case let .dragging(window) = phase else { return }
+        guard let window = detector.draggedWindow else { return }
         guard activationHeld else {
             target = nil
             spanAnchor = nil
@@ -186,7 +160,7 @@ final class DragController {
     }
 
     private func reset() {
-        phase = .idle
+        detector.reset()
         target = nil
         spanAnchor = nil
         overlay.hide()

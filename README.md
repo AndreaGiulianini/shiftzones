@@ -27,7 +27,7 @@ shortcuts to learn.
 ## Requirements
 
 - macOS 13 or later
-- Swift 5.10+ (the Command Line Tools are enough: `xcode-select --install`)
+- Swift 6.0+ (the Command Line Tools are enough: `xcode-select --install`)
 
 ## Building
 
@@ -111,6 +111,7 @@ Sources/ShiftZonesCore/   pure logic, no AppKit
   ZoneGeometry.swift      zone → window frame (with spacing), hit testing, combining zones
   LayoutTemplate.swift    Columns / Rows / Grid / Priority templates
   ZoneEditing.swift       move / resize (linked edges, snapping) / split
+  WindowDragDetector.swift tells a window drag apart from text selections and resizes
   ZoneFile.swift          parsing (with per-line errors) and writing of the zones file
   LayoutStore.swift       zones of every display, file regeneration, default layouts
 Sources/ShiftZones/       menu bar app
@@ -134,8 +135,9 @@ scripts/                  build, run, local signing certificate, icon generation
 
 1. A global event monitor receives mouse down / drag / mouse up and modifier key changes.
 2. On the first movement it looks up the window under the cursor (`AXUIElementCopyElementAtPosition`, falling
-   back to `CGWindowList`) and records its frame; if the position changes but the size doesn't, the window is
-   being dragged (not a text selection or a resize).
+   back to `CGWindowList`) and records its frame as seen by the window server: the frame reported through
+   Accessibility comes from the owning app and lags behind during a drag. If the position changes but the size
+   doesn't, the window is being dragged (not a text selection or a resize).
 3. While the key is held it shows the zones right below the dragged window and highlights the one under the
    cursor.
 4. On release it sets position and size through the Accessibility API (and applies them again after 100 ms

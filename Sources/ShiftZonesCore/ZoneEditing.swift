@@ -1,6 +1,6 @@
 import Foundation
 
-public struct ResizeEdges: OptionSet, Hashable {
+public struct ResizeEdges: OptionSet, Hashable, Sendable {
     public let rawValue: Int
     public init(rawValue: Int) { self.rawValue = rawValue }
 
@@ -10,7 +10,7 @@ public struct ResizeEdges: OptionSet, Hashable {
     public static let bottom = ResizeEdges(rawValue: 1 << 3)
 }
 
-public enum SplitOrientation {
+public enum SplitOrientation: Sendable {
     /// Two zones side by side.
     case columns
     /// Two zones stacked vertically.

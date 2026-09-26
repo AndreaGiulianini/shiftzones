@@ -1,7 +1,7 @@
 import Foundation
 
 /// A connected display, as described by the app.
-public struct MonitorDescriptor: Equatable {
+public struct MonitorDescriptor: Equatable, Sendable {
     public var id: String
     public var name: String
     /// Informational only, e.g. "3440 × 1440".
@@ -19,7 +19,7 @@ public struct MonitorDescriptor: Equatable {
 }
 
 /// A section of the file: one display with its zones.
-public struct MonitorZones: Equatable {
+public struct MonitorZones: Equatable, Sendable {
     public var id: String
     public var name: String
     public var resolution: String?
@@ -33,7 +33,7 @@ public struct MonitorZones: Equatable {
     }
 }
 
-public struct ZoneFileError: Error, Equatable {
+public struct ZoneFileError: Error, Equatable, Sendable {
     public let line: Int
     public let message: String
 }
@@ -47,7 +47,7 @@ public struct ZoneFileError: Error, Equatable {
 ///
 /// Each zone line is `x y width height` as % of the usable area, origin at the top-left.
 public enum ZoneFile {
-    public struct Content: Equatable {
+    public struct Content: Equatable, Sendable {
         /// In file order.
         public var monitors: [MonitorZones]
         /// Displays listed before the "disconnected" section.

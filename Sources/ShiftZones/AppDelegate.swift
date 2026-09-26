@@ -63,10 +63,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// The permission can be granted at any moment: keep checking until it is.
     private func waitForTrust() {
         trustTimer?.invalidate()
-        trustTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
+        trustTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, Accessibility.isTrusted else { return }
-                timer.invalidate()
+                self.trustTimer?.invalidate()
+                self.trustTimer = nil
                 self.drag.start()
                 self.settingsModel.refresh()
                 self.updateStatusIcon()

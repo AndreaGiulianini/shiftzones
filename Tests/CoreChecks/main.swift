@@ -6,6 +6,7 @@ import ShiftZonesCore
 
 var failures = 0
 
+@MainActor
 func check(_ condition: @autoclosure () -> Bool, _ message: @autoclosure () -> String, line: Int = #line) {
     if !condition() {
         failures += 1
@@ -97,6 +98,27 @@ check(halves.count == 2 && approx(halves[0].rect.width, 0.5) && approx(halves[1]
 let stacked = ZoneEditing.split(Zone(rect: .full), .rows)
 check(approx(stacked[1].rect.y, 0.5) && approx(stacked[1].rect.height, 0.5), "split into rows")
 
+// MARK: Drag detection
+
+/// Feeds one mouse movement per frame; the first frame is read when the window is looked up.
+func draggedWindow(frames: [CGRect?], windowUnderCursor: Int? = 1) -> Int? {
+    var detector = WindowDragDetector<Int>()
+    var remaining = frames
+    detector.mouseDown()
+    for _ in frames {
+        _ = detector.mouseDragged(windowUnderCursor: { windowUnderCursor },
+                                  frame: { _ in remaining.isEmpty ? nil : remaining.removeFirst() })
+    }
+    return detector.draggedWindow
+}
+
+let resting = CGRect(x: 100, y: 100, width: 800, height: 600)
+check(draggedWindow(frames: Array(repeating: resting, count: 8) + [resting.offsetBy(dx: 40, dy: 0)]) == 1,
+      "a window that starts moving late is still detected")
+check(draggedWindow(frames: [resting, resting, resting]) == nil, "movement without the window moving is not a window drag")
+check(draggedWindow(frames: [resting, CGRect(x: 90, y: 100, width: 810, height: 600)]) == nil, "resizing is not a window drag")
+check(draggedWindow(frames: [resting, resting.offsetBy(dx: 40, dy: 0)], windowUnderCursor: nil) == nil, "no window under the cursor")
+
 // MARK: Zones file: parsing
 
 let wide = MonitorDescriptor(id: "WIDE", name: "ZQE-CBA", resolution: "3440 × 1440", isPrimary: true, aspectRatio: 3440.0 / 1415)
@@ -130,6 +152,7 @@ case .failure(let error):
     check(false, "sample file is invalid: line \(error.line) \(error.message)")
 }
 
+@MainActor
 func expectError(_ text: String, line: Int, containing fragment: String, _ caller: Int = #line) {
     switch ZoneFile.parse(text, connected: [wide]) {
     case .success:
@@ -180,8 +203,8 @@ if case .success(let content) = ZoneFile.parse(rendered, connected: []) {
 
 let directory = FileManager.default.temporaryDirectory.appendingPathComponent("shiftzones-check-\(UUID().uuidString)")
 let zonesURL = directory.appendingPathComponent("zones.conf")
-func fileText() -> String { (try? String(contentsOf: zonesURL, encoding: .utf8)) ?? "" }
-func position(_ fragment: String) -> String.Index? { fileText().range(of: fragment)?.lowerBound }
+@MainActor func fileText() -> String { (try? String(contentsOf: zonesURL, encoding: .utf8)) ?? "" }
+@MainActor func position(_ fragment: String) -> String.Index? { fileText().range(of: fragment)?.lowerBound }
 
 let store = LayoutStore(fileURL: zonesURL)
 store.update(connected: [wide])
