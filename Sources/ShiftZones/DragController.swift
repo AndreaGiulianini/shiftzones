@@ -86,8 +86,7 @@ final class DragController {
     private func restore(_ window: AXWindow, from frame: CGRect, to size: CGSize) {
         let cursor = ScreenGeometry.mouseLocation()
         let ratio = frame.width > 0 ? (cursor.x - frame.minX) / frame.width : 0.5
-        window.setSize(size)
-        window.setPosition(CGPoint(x: cursor.x - size.width * ratio, y: frame.minY))
+        window.setFrame(CGRect(origin: CGPoint(x: cursor.x - size.width * ratio, y: frame.minY), size: size))
     }
 
     private func mouseUp() {

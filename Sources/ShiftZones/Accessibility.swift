@@ -75,10 +75,20 @@ struct AXWindow {
             }
             // Position → size → position: when moving to another display the size
             // would otherwise be clamped by the display the window comes from.
-            setPosition(frame.origin)
+            setPosition(originWithRoom(for: frame))
             setSize(frame.size)
             setPosition(frame.origin)
         }
+    }
+
+    /// The frame's origin, moved left if needed so that both the current and the new width fit before
+    /// the right edge of the display. Near that edge macOS clamps a resize to the edge, and ignores it
+    /// altogether while the window hangs past the edge: a zone on the right side would never shrink a wider window.
+    private func originWithRoom(for frame: CGRect) -> CGPoint {
+        guard let width = self.frame?.width,
+              let screen = ScreenGeometry.screen(containing: CGPoint(x: frame.midX, y: frame.midY))
+        else { return frame.origin }
+        return CGPoint(x: min(frame.minX, screen.axVisibleFrame.maxX - max(width, frame.width)), y: frame.minY)
     }
 
     func setPosition(_ point: CGPoint) {
