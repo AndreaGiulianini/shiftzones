@@ -62,6 +62,7 @@ struct SettingsView: View {
     @AppStorage(PreferencesKey.showOnAllScreens) private var showOnAllScreens = Preferences.Default.showOnAllScreens
     @AppStorage(PreferencesKey.restoreSizeOnUnsnap) private var restoreSize = Preferences.Default.restoreSizeOnUnsnap
     @AppStorage(PreferencesKey.spacing) private var spacing = Preferences.Default.spacing
+    @AppStorage(PreferencesKey.restoreWindowsOnReconnect) private var restoreOnReconnect = Preferences.Default.restoreWindowsOnReconnect
 
     var body: some View {
         Form {
@@ -156,6 +157,14 @@ struct SettingsView: View {
             }
 
             Section("General") {
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle("Put windows back on their display when it reconnects", isOn: $restoreOnReconnect)
+                    Text("Many monitors disconnect while the Mac sleeps and macOS moves their windows "
+                         + "to the remaining displays: they go back as soon as the monitors reconnect.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 Toggle("Open ShiftZones at login", isOn: Binding(
                     get: { model.launchAtLogin },
                     set: { model.setLaunchAtLogin($0) }

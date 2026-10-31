@@ -58,6 +58,8 @@ struct AXWindow {
         return AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role) != .invalidUIElement
     }
 
+    var isFullScreen: Bool { (element.attribute("AXFullScreen") as? Bool) == true }
+
     var isResizable: Bool {
         var settable: DarwinBoolean = false
         return AXUIElementIsAttributeSettable(element, kAXSizeAttribute as CFString, &settable) == .success
@@ -138,7 +140,8 @@ extension AXWindow {
            let hit, let window = window(containing: hit) {
             return window.pid == ownPID ? nil : window
         }
-        return fromWindowList(at: point, excluding: ownPID)
+        // Fallback for apps that don't answer AXUIElementCopyElementAtPosition properly.
+        return ListedWindow.onScreen().first { $0.frame.contains(point) }?.axWindow
     }
 
     private static func window(containing element: AXUIElement) -> AXWindow? {
@@ -151,23 +154,36 @@ extension AXWindow {
         }
         return nil
     }
+}
 
-    /// Fallback for apps that don't answer AXUIElementCopyElementAtPosition properly.
-    private static func fromWindowList(at point: CGPoint, excluding ownPID: pid_t) -> AXWindow? {
+/// A window of another application as listed by the window server: listing all of them takes a couple of
+/// milliseconds and doesn't depend on the apps answering, unlike Accessibility.
+struct ListedWindow {
+    let id: CGWindowID
+    let pid: pid_t
+    /// Frame in AX coordinates.
+    let frame: CGRect
+
+    /// The normal windows of the other apps on screen, front to back.
+    static func onScreen() -> [ListedWindow] {
+        let ownPID = ProcessInfo.processInfo.processIdentifier
         let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
-        guard let infos = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else { return nil }
-        for info in infos {
+        guard let infos = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else { return [] }
+        return infos.compactMap { info in
             guard (info[kCGWindowLayer as String] as? Int) == 0,
                   let pid = info[kCGWindowOwnerPID as String] as? pid_t, pid != ownPID,
+                  let id = info[kCGWindowNumber as String] as? CGWindowID,
                   let boundsInfo = info[kCGWindowBounds as String] as? NSDictionary,
-                  let bounds = CGRect(dictionaryRepresentation: boundsInfo as CFDictionary),
-                  bounds.contains(point)
-            else { continue }
-            let number = info[kCGWindowNumber as String] as? CGWindowID
-            let windows = AXUIElementCreateApplication(pid).elements(of: kAXWindowsAttribute).map { AXWindow(element: $0) }
-            return windows.first { $0.windowID == number } ?? windows.first { $0.frame == bounds }
+                  let bounds = CGRect(dictionaryRepresentation: boundsInfo as CFDictionary)
+            else { return nil }
+            return ListedWindow(id: id, pid: pid, frame: bounds)
         }
-        return nil
+    }
+
+    /// The same window through Accessibility, to move it.
+    var axWindow: AXWindow? {
+        let windows = AXUIElementCreateApplication(pid).elements(of: kAXWindowsAttribute).map { AXWindow(element: $0) }
+        return windows.first { $0.windowID == id } ?? windows.first { $0.frame == frame }
     }
 }
 

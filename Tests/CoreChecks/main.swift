@@ -119,6 +119,30 @@ check(draggedWindow(frames: [resting, resting, resting]) == nil, "movement witho
 check(draggedWindow(frames: [resting, CGRect(x: 90, y: 100, width: 810, height: 600)]) == nil, "resizing is not a window drag")
 check(draggedWindow(frames: [resting, resting.offsetBy(dx: 40, dy: 0)], windowUnderCursor: nil) == nil, "no window under the cursor")
 
+// MARK: Windows back on their display
+
+typealias Placement = WindowArrangement<Int>.Placement
+let onWide = Placement(screenID: "WIDE", frame: CGRect(x: 10, y: 10, width: 800, height: 600))
+let onSuper = Placement(screenID: "SUPER", frame: CGRect(x: 2000, y: 0, width: 1000, height: 1400))
+let onLaptop = Placement(screenID: "LAPTOP", frame: CGRect(x: 0, y: 0, width: 700, height: 500))
+var arrangement = WindowArrangement<Int>()
+arrangement.record([1: onWide, 2: onSuper, 3: onLaptop], connected: ["WIDE", "SUPER", "LAPTOP"])
+
+// The super-wide monitor stays off: only the windows of the other ones can go back.
+var nowOn = [1: "LAPTOP", 2: "LAPTOP", 3: "LAPTOP"]
+let firstPass = arrangement.takeMisplaced(connected: ["WIDE", "LAPTOP"]) { nowOn[$0] }
+check(firstPass.map { $0.window } == [1] && firstPass.first?.placement == onWide, "window moved off a reconnected display goes back")
+check(arrangement.placements == [2: onSuper], "placements on the missing display wait for it")
+
+// Asleep again before it returns: the window macOS moved still belongs to the super-wide monitor.
+arrangement.record([1: onWide, 2: onLaptop, 3: onLaptop], connected: ["WIDE", "LAPTOP"])
+check(arrangement.placements[2] == onSuper && arrangement.placements[3] == onLaptop, "new recording keeps the waiting placement")
+
+nowOn = [1: "WIDE", 2: "LAPTOP", 3: "LAPTOP"]
+let secondPass = arrangement.takeMisplaced(connected: ["WIDE", "SUPER", "LAPTOP"]) { $0 == 2 ? nil : nowOn[$0] }
+check(secondPass.isEmpty, "windows on their display, closed or minimized are left alone")
+check(arrangement.isEmpty, "all displays back: nothing left to restore")
+
 // MARK: Zones file: parsing
 
 let wide = MonitorDescriptor(id: "WIDE", name: "ZQE-CBA", resolution: "3440 × 1440", isPrimary: true, aspectRatio: 3440.0 / 1415)

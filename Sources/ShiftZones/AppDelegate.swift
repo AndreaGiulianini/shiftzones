@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let store = LayoutStore()
     private lazy var overlay = OverlayController(store: store)
     private lazy var drag = DragController(store: store, overlay: overlay)
+    private let restorer = WindowRestorer()
     private lazy var settingsModel = SettingsModel(store: store) { [weak self] screenID in
         self?.editZones(screenID: screenID)
     }
@@ -42,6 +43,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.zonesFileChanged()
             }
         }
+
+        // Windows that macOS moved away while the displays slept go back to their display.
+        restorer.start()
 
         if Accessibility.isTrusted {
             drag.start()

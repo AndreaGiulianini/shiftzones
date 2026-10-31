@@ -27,6 +27,9 @@ shortcuts to learn.
   - right-click to split into columns or rows, duplicate, delete; double-click empty space to add a zone;
   - ⌘Z undo, ↩ save, esc exit without saving.
 - **Adjustable spacing** between zones and from the screen edges.
+- **Windows back on their display**: many monitors disconnect while the Mac sleeps, and macOS piles their
+  windows onto the displays that are left. ShiftZones keeps track of where every window is and, once a display
+  is back (awake, connected and unlocked), returns the windows that ended up on another display.
 - **Default layouts** based on aspect ratio: 3-zone Priority on ultrawides, 2 columns on regular displays,
   2 rows on portrait ones.
 
@@ -75,6 +78,7 @@ The menu bar icon lets you turn zones on and off, open the editor for each displ
 | Spacing between zones | 8 pt |
 | Show zones on all displays | yes |
 | Restore the original size outside a zone | yes |
+| Put windows back on their display when it reconnects | yes |
 | Open at login | no |
 
 ### Zones file
@@ -121,11 +125,13 @@ Sources/ShiftZonesCore/   pure logic, no AppKit
   LayoutTemplate.swift    Columns / Rows / Grid / Priority templates
   ZoneEditing.swift       move / resize (linked edges, snapping) / split
   WindowDragDetector.swift tells a window drag apart from text selections and resizes
+  WindowArrangement.swift the display of each window, to put it back when the display returns
   ZoneFile.swift          parsing (with per-line errors) and writing of the zones file
   LayoutStore.swift       zones of every display, file regeneration, default layouts
 Sources/ShiftZones/       menu bar app
   AppDelegate.swift       menu bar, Accessibility permission, opening the editor and settings
   DragController.swift    detects a window drag and snaps the window to the zone
+  WindowRestorer.swift    records window positions while in use, restores them when a display returns
   OverlayController.swift transparent windows that show the zones while dragging
   ZoneEditor.swift        full-screen editor + toolbar
   ZoneCanvasView.swift    zone interaction and drawing in the editor

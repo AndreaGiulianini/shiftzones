@@ -37,6 +37,7 @@ enum PreferencesKey {
     static let showOnAllScreens = "showOnAllScreens"
     static let spacing = "spacing"
     static let restoreSizeOnUnsnap = "restoreSizeOnUnsnap"
+    static let restoreWindowsOnReconnect = "restoreWindowsOnReconnect"
 }
 
 /// Preferences in UserDefaults; the Settings window uses the same keys and defaults through @AppStorage.
@@ -49,6 +50,7 @@ enum Preferences {
         static let showOnAllScreens = true
         static let spacing = 8.0
         static let restoreSizeOnUnsnap = true
+        static let restoreWindowsOnReconnect = true
     }
 
     private static var defaults: UserDefaults { .standard }
@@ -61,6 +63,7 @@ enum Preferences {
             PreferencesKey.showOnAllScreens: Default.showOnAllScreens,
             PreferencesKey.spacing: Default.spacing,
             PreferencesKey.restoreSizeOnUnsnap: Default.restoreSizeOnUnsnap,
+            PreferencesKey.restoreWindowsOnReconnect: Default.restoreWindowsOnReconnect,
         ])
     }
 
@@ -82,4 +85,5 @@ enum Preferences {
     static var showOnAllScreens: Bool { defaults.bool(forKey: PreferencesKey.showOnAllScreens) }
     static var spacing: Double { defaults.double(forKey: PreferencesKey.spacing) }
     static var restoreSizeOnUnsnap: Bool { defaults.bool(forKey: PreferencesKey.restoreSizeOnUnsnap) }
+    static var restoreWindowsOnReconnect: Bool { defaults.bool(forKey: PreferencesKey.restoreWindowsOnReconnect) }
 }
