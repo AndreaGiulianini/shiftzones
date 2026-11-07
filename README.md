@@ -131,21 +131,21 @@ Since macOS 15 the system has its own window tiling:
 
 ```
 Sources/ShiftZonesCore/   pure logic, no AppKit
-  Zone.swift              ZoneRect (normalized 0…1, top-left origin), Zone, ZoneLayout
+  Zone.swift              ZoneRect (normalized 0…1, top-left origin), Zone, ZoneLayout (zones in layers)
   ZoneGeometry.swift      zone → window frame (with spacing), hit testing, combining zones
   LayoutTemplate.swift    Columns / Rows / Grid / Priority templates
-  ZoneEditing.swift       move / resize (linked edges, snapping) / split
+  ZoneEditing.swift       move / resize (linked edges, snapping, also to other layers) / split
   WindowDragDetector.swift tells a window drag apart from text selections and resizes
   WindowArrangement.swift the display of each window, to put it back when the display returns
   ZoneFile.swift          parsing (with per-line errors) and writing of the zones file
   LayoutStore.swift       zones of every display, file regeneration, default layouts
 Sources/ShiftZones/       menu bar app
   AppDelegate.swift       menu bar, Accessibility permission, opening the editor and settings
-  DragController.swift    detects a window drag and snaps the window to the zone
+  DragController.swift    detects a window drag, switches layers and snaps the window to the zone
   WindowRestorer.swift    records window positions while in use, restores them when a display returns
-  OverlayController.swift transparent windows that show the zones while dragging
-  ZoneEditor.swift        full-screen editor + toolbar
-  ZoneCanvasView.swift    zone interaction and drawing in the editor
+  OverlayController.swift transparent windows that show the current layer's zones while dragging
+  ZoneEditor.swift        full-screen editor + toolbar (templates, layers)
+  ZoneCanvasView.swift    zone and layer editing, undo and drawing in the editor
   SettingsView.swift      settings window (SwiftUI)
   Preferences.swift       preferences in UserDefaults and their defaults
   Accessibility.swift     reading and moving other apps' windows

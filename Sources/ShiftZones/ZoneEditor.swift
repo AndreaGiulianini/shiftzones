@@ -11,11 +11,20 @@ final class ZoneEditor: NSObject {
     private let window: EditorWindow
     private let canvas: ZoneCanvasView
     private var toolbar: NSPanel!
-    private var templates: NSSegmentedControl!
-    private var layerPicker: NSSegmentedControl!
-    private var layerButtons: NSSegmentedControl!
+    private lazy var templates = NSSegmentedControl(labels: LayoutTemplate.allCases.map(\.title), trackingMode: .selectOne,
+                                                    target: self, action: #selector(applyTemplate(_:)))
     private let stepper = NSStepper()
     private let countLabel = NSTextField(labelWithString: "")
+    private lazy var layerPicker = NSSegmentedControl(labels: ["1"], trackingMode: .selectOne,
+                                                      target: self, action: #selector(layerSelected(_:)))
+    /// + adds a layer, − deletes the current one.
+    private lazy var layerButtons = NSSegmentedControl(
+        images: [NSImage(named: NSImage.addTemplateName)!, NSImage(named: NSImage.removeTemplateName)!],
+        trackingMode: .momentary, target: self, action: #selector(layerButtonPressed(_:)))
+
+    /// Zones a template creates when the layer being edited is empty.
+    private static let defaultTemplateZones = 3
+    private static let maximumTemplateZones = 12
 
     init(screen: NSScreen, store: LayoutStore, onClose: @escaping (_ editor: ZoneEditor, _ saved: Bool) -> Void) {
         self.screen = screen
@@ -30,7 +39,7 @@ final class ZoneEditor: NSObject {
         canvas.delegate = self
         window.contentView = canvas
         toolbar = makeToolbar()
-        updateLayerControls()
+        layersDidChange()
     }
 
     func show() {
@@ -81,8 +90,8 @@ final class ZoneEditor: NSObject {
         if sender.selectedSegment == 0 { canvas.addLayer() } else { canvas.removeCurrentLayer() }
     }
 
-    /// Matches the layer controls and the zone count to the canvas.
-    private func updateLayerControls() {
+    /// Layers added, removed or switched: the toolbar follows the layer being edited.
+    private func layersDidChange() {
         let count = canvas.layers.count
         layerPicker.segmentCount = count
         for index in 0..<count {
@@ -94,13 +103,18 @@ final class ZoneEditor: NSObject {
         layerButtons.setEnabled(count > 1, forSegment: 1)
 
         templates.selectedSegment = -1
-        if !canvas.zones.isEmpty {
-            stepper.integerValue = min(canvas.zones.count, 12)
-            countLabel.stringValue = "\(stepper.integerValue)"
-        }
+        if !canvas.zones.isEmpty { showZoneCount(canvas.zones.count) }
+        fitToolbar()
+    }
 
-        // The toolbar grows with the layers: keep it centered where it is.
-        guard let toolbar, let content = toolbar.contentView else { return }
+    private func showZoneCount(_ count: Int) {
+        stepper.integerValue = min(count, Self.maximumTemplateZones)
+        countLabel.stringValue = "\(stepper.integerValue)"
+    }
+
+    /// Resizes the toolbar to its content (it grows with the layers), keeping it centered where it is.
+    private func fitToolbar() {
+        guard let content = toolbar.contentView else { return }
         let old = toolbar.frame, size = content.fittingSize
         toolbar.setFrame(NSRect(x: old.midX - size.width / 2, y: old.maxY - size.height, width: size.width, height: size.height),
                          display: true)
@@ -115,26 +129,16 @@ final class ZoneEditor: NSObject {
         let title = NSTextField(labelWithString: screen.localizedName)
         title.font = .boldSystemFont(ofSize: 13)
 
-        templates = NSSegmentedControl(labels: LayoutTemplate.allCases.map(\.title), trackingMode: .selectOne,
-                                       target: self, action: #selector(applyTemplate(_:)))
         templates.selectedSegment = -1
-
-        let initialCount = canvas.zones.isEmpty ? 3 : min(canvas.zones.count, 12)
         stepper.minValue = 1
-        stepper.maxValue = 12
-        stepper.integerValue = initialCount
+        stepper.maxValue = Double(Self.maximumTemplateZones)
         stepper.target = self
         stepper.action = #selector(countChanged(_:))
-        countLabel.stringValue = "\(initialCount)"
         countLabel.font = .monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
         countLabel.alignment = .right
         countLabel.widthAnchor.constraint(equalToConstant: 20).isActive = true
+        showZoneCount(Self.defaultTemplateZones)
 
-        layerPicker = NSSegmentedControl(labels: ["1"], trackingMode: .selectOne,
-                                         target: self, action: #selector(layerSelected(_:)))
-        layerButtons = NSSegmentedControl(images: [NSImage(named: NSImage.addTemplateName)!,
-                                                   NSImage(named: NSImage.removeTemplateName)!],
-                                          trackingMode: .momentary, target: self, action: #selector(layerButtonPressed(_:)))
         layerButtons.setToolTip("Add a layer: its zones can overlap the other layers", forSegment: 0)
         layerButtons.setToolTip("Delete this layer and its zones", forSegment: 1)
 
@@ -154,38 +158,44 @@ final class ZoneEditor: NSObject {
         row.alignment = .centerY
         row.setClippingResistancePriority(.required, for: .horizontal)
 
-        let layerKey = Preferences.usableLayerModifier
-        let hints = [
-            "Drag to move · drag the edges to resize (⌥ this zone only, ⌘ no snapping)",
-            "Double-click empty space to add · right-click to split · ⌫ delete · ⌘Z undo · ↩ save · esc exit",
-            "Zones in different layers can overlap · ⇥ next layer"
-                + (layerKey.map { " · while dragging a window, press \($0.label) for the next layer" } ?? ""),
-        ].map { text -> NSTextField in
-            let label = NSTextField(labelWithString: text)
-            label.font = .systemFont(ofSize: 11)
-            label.textColor = .secondaryLabelColor
-            return label
-        }
-
-        let stack = NSStackView(views: [row] + hints)
+        let stack = NSStackView(views: [row] + makeHints())
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 6
         stack.setCustomSpacing(10, after: row)
         stack.setClippingResistancePriority(.required, for: .horizontal)
-        stack.translatesAutoresizingMaskIntoConstraints = false
+        return makePanel(showing: stack)
+    }
 
+    private func makeHints() -> [NSTextField] {
+        let layerKey = Preferences.usableLayerModifier
+        return [
+            "Drag to move · drag the edges to resize (⌥ this zone only, ⌘ no snapping)",
+            "Double-click empty space to add · right-click to split · ⌫ delete · ⌘Z undo · ↩ save · esc exit",
+            "Zones in different layers can overlap · ⇥ next layer"
+                + (layerKey.map { " · while dragging a window, press \($0.label) for the next layer" } ?? ""),
+        ].map { text in
+            let label = NSTextField(labelWithString: text)
+            label.font = .systemFont(ofSize: 11)
+            label.textColor = .secondaryLabelColor
+            return label
+        }
+    }
+
+    /// Dark floating panel with rounded corners, movable by its background.
+    private func makePanel(showing content: NSView) -> NSPanel {
         let background = NSVisualEffectView()
         background.material = .hudWindow
         background.blendingMode = .behindWindow
         background.state = .active
         background.maskImage = .roundedMask(radius: 14)
-        background.addSubview(stack)
+        content.translatesAutoresizingMaskIntoConstraints = false
+        background.addSubview(content)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 16),
-            stack.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -16),
-            stack.topAnchor.constraint(equalTo: background.topAnchor, constant: 12),
-            stack.bottomAnchor.constraint(equalTo: background.bottomAnchor, constant: -12),
+            content.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 16),
+            content.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -16),
+            content.topAnchor.constraint(equalTo: background.topAnchor, constant: 12),
+            content.bottomAnchor.constraint(equalTo: background.bottomAnchor, constant: -12),
         ])
 
         let panel = ToolbarPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel],
@@ -216,7 +226,7 @@ extension ZoneEditor: ZoneCanvasDelegate {
     func canvasRequestsSave() { finish(saved: true) }
     func canvasRequestsCancel() { finish(saved: false) }
     func canvasDidEditManually() { templates.selectedSegment = -1 }
-    func canvasDidChangeLayers() { updateLayerControls() }
+    func canvasDidChangeLayers() { layersDidChange() }
 }
 
 /// Covers the whole display (menu bar and Dock included) while staying below context menus.

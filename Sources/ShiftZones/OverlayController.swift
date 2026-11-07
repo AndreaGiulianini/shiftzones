@@ -35,7 +35,7 @@ final class OverlayController {
             let window = windows[id] ?? makeWindow(for: screen, id: id)
             let isActive = id == activeScreenID
             let layout = store.layout(for: screen)
-            let layer = min(layerIndex[id] ?? 0, max(layout.layers.count - 1, 0))
+            let layer = layout.clampedLayer(layerIndex[id] ?? 0)
             window.zoneView.configure(screen: screen,
                                       zones: layout.zones(inLayer: layer),
                                       layerBadge: layerBadge(layer: layer, of: layout.layers.count, isActive: isActive),

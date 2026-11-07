@@ -25,6 +25,20 @@ final class ZoneCanvasView: NSView {
     private var history: [Snapshot] = []
     private var interaction: Interaction?
 
+    /// Zones of the current layer.
+    private(set) var zones: [Zone] {
+        get { layers[currentLayer] }
+        set { layers[currentLayer] = newValue }
+    }
+
+    /// Zones of the other layers.
+    private var referenceZones: [Zone] {
+        layers.enumerated().filter { $0.offset != currentLayer }.flatMap(\.element)
+    }
+
+    private var selectedZone: Zone? { zones.first { $0.id == selectedID } }
+    private var snapshot: Snapshot { Snapshot(layers: layers, currentLayer: currentLayer) }
+
     private struct Snapshot {
         let layers: [[Zone]]
         let currentLayer: Int
@@ -47,17 +61,6 @@ final class ZoneCanvasView: NSView {
         self.area = area
         self.layers = layout.layers.isEmpty ? [[]] : layout.layers
         super.init(frame: .zero)
-    }
-
-    /// Zones of the current layer.
-    private(set) var zones: [Zone] {
-        get { layers[currentLayer] }
-        set { layers[currentLayer] = newValue }
-    }
-
-    /// Zones of the other layers.
-    private var referenceZones: [Zone] {
-        layers.enumerated().filter { $0.offset != currentLayer }.flatMap(\.element)
     }
 
     @available(*, unavailable)
@@ -153,8 +156,6 @@ final class ZoneCanvasView: NSView {
         zones.replaceSubrange(index...index, with: ZoneEditing.split(zones[index], orientation))
         delegate?.canvasDidEditManually()
     }
-
-    private var snapshot: Snapshot { Snapshot(layers: layers, currentLayer: currentLayer) }
 
     private func pushHistory() {
         history.append(snapshot)
@@ -255,8 +256,6 @@ final class ZoneCanvasView: NSView {
     }
 
     // MARK: - Hit testing and cursor
-
-    private var selectedZone: Zone? { zones.first { $0.id == selectedID } }
 
     private func frame(for zone: Zone) -> CGRect {
         ZoneGeometry.hitFrame(of: zone.rect, in: area)

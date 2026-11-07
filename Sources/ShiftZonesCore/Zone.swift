@@ -69,8 +69,13 @@ public struct ZoneLayout: Codable, Hashable, Sendable {
 
     public var zoneCount: Int { layers.reduce(0) { $0 + $1.count } }
 
+    /// The existing layer nearest to `index` (0 when there are no layers).
+    public func clampedLayer(_ index: Int) -> Int {
+        min(max(index, 0), max(layers.count - 1, 0))
+    }
+
     /// The zones of a layer; an index out of range gives the nearest layer.
     public func zones(inLayer index: Int) -> [Zone] {
-        layers.isEmpty ? [] : layers[min(max(index, 0), layers.count - 1)]
+        layers.isEmpty ? [] : layers[clampedLayer(index)]
     }
 }

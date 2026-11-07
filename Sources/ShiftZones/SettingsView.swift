@@ -162,9 +162,9 @@ struct SettingsView: View {
             } header: {
                 Text("Zones file")
             } footer: {
-                Text("One line per zone: x y width height, as % of the usable screen area. "
-                     + "Changes apply as soon as you save; when a display is connected or disconnected "
-                     + "the file is rewritten, keeping your zones.")
+                Text("One line per zone: x y width height, as % of the usable screen area; a --- line "
+                     + "starts a new layer. Changes apply as soon as you save; when a display is connected "
+                     + "or disconnected the file is rewritten, keeping your zones.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

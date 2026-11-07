@@ -27,7 +27,8 @@ final class DragController {
     private var snapped: [AXWindow: SnapRecord] = [:]
     /// Layer shown on each display during the current drag; every drag starts from the first one.
     private var layerIndex: [String: Int] = [:]
-    private var layerKeyHeld = false
+    /// As of the last event: switching happens when the layer key goes down, not while it stays held.
+    private var layerKeyWasHeld = false
 
     /// Some apps finish their own drag after mouseUp, so the frame is applied again after this delay.
     private static let reapplyDelay: TimeInterval = 0.1
@@ -55,7 +56,7 @@ final class DragController {
         switch event.type {
         case .leftMouseDown:
             reset()
-            layerKeyHeld = isLayerKeyHeld(in: event.modifierFlags)
+            layerKeyWasHeld = isLayerKeyHeld(in: event.modifierFlags)
             detector.mouseDown()
         case .leftMouseDragged:
             mouseDragged()
@@ -69,10 +70,11 @@ final class DragController {
     }
 
     private func flagsChanged(_ flags: NSEvent.ModifierFlags) {
-        let pressed = isLayerKeyHeld(in: flags) && !layerKeyHeld
-        layerKeyHeld = isLayerKeyHeld(in: flags)
+        let layerKeyHeld = isLayerKeyHeld(in: flags)
+        let layerKeyPressed = layerKeyHeld && !layerKeyWasHeld
+        layerKeyWasHeld = layerKeyHeld
         guard detector.draggedWindow != nil else { return }
-        if pressed && activationHeld { showNextLayer() }
+        if layerKeyPressed && activationHeld { showNextLayer() }
         refresh()
     }
 

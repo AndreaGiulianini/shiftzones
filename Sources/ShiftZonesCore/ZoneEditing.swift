@@ -43,17 +43,15 @@ public enum ZoneEditing {
     public static func resize(_ id: UUID, in zones: [Zone], edges: ResizeEdges, dx: Double, dy: Double,
                               linked: Bool, threshold: (x: Double, y: Double),
                               minSize: (width: Double, height: Double), reference: [Zone] = []) -> [Zone] {
-        var result = zones
-        func move(_ axis: Axis, leading: Bool) {
-            result = moveEdge(result, id: id, axis: axis, leading: leading, delta: axis == .x ? dx : dy, linked: linked,
-                              threshold: axis == .x ? threshold.x : threshold.y,
-                              minLength: axis == .x ? minSize.width : minSize.height, reference: reference)
+        let sides: [(edge: ResizeEdges, axis: Axis, leading: Bool)] = [
+            (.left, .x, true), (.right, .x, false), (.top, .y, true), (.bottom, .y, false),
+        ]
+        return sides.filter { edges.contains($0.edge) }.reduce(zones) { result, side in
+            let horizontal = side.axis == .x
+            return moveEdge(result, id: id, axis: side.axis, leading: side.leading, delta: horizontal ? dx : dy,
+                            linked: linked, threshold: horizontal ? threshold.x : threshold.y,
+                            minLength: horizontal ? minSize.width : minSize.height, reference: reference)
         }
-        if edges.contains(.left) { move(.x, leading: true) }
-        if edges.contains(.right) { move(.x, leading: false) }
-        if edges.contains(.top) { move(.y, leading: true) }
-        if edges.contains(.bottom) { move(.y, leading: false) }
-        return result
     }
 
     public static func split(_ zone: Zone, _ orientation: SplitOrientation) -> [Zone] {
