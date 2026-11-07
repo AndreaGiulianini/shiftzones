@@ -3,6 +3,7 @@ import ShiftZonesCore
 
 /// Detects when a window is being dragged and, while the activation key is held,
 /// shows the zones and moves the window into the zone under the cursor on release.
+/// Pressing the layer key shows the next layer of zones of the display under the cursor.
 @MainActor
 final class DragController {
     private struct SnapTarget {
@@ -24,6 +25,9 @@ final class DragController {
     private var target: SnapTarget?
     private var spanAnchor: (screenID: String, zone: Zone)?
     private var snapped: [AXWindow: SnapRecord] = [:]
+    /// Layer shown on each display during the current drag; every drag starts from the first one.
+    private var layerIndex: [String: Int] = [:]
+    private var layerKeyHeld = false
 
     /// Some apps finish their own drag after mouseUp, so the frame is applied again after this delay.
     private static let reapplyDelay: TimeInterval = 0.1
@@ -51,16 +55,25 @@ final class DragController {
         switch event.type {
         case .leftMouseDown:
             reset()
+            layerKeyHeld = isLayerKeyHeld(in: event.modifierFlags)
             detector.mouseDown()
         case .leftMouseDragged:
             mouseDragged()
         case .leftMouseUp:
             mouseUp()
         case .flagsChanged:
-            if detector.draggedWindow != nil { refresh() }
+            flagsChanged(event.modifierFlags)
         default:
             break
         }
+    }
+
+    private func flagsChanged(_ flags: NSEvent.ModifierFlags) {
+        let pressed = isLayerKeyHeld(in: flags) && !layerKeyHeld
+        layerKeyHeld = isLayerKeyHeld(in: flags)
+        guard detector.draggedWindow != nil else { return }
+        if pressed && activationHeld { showNextLayer() }
+        refresh()
     }
 
     private func mouseDragged() {
@@ -117,6 +130,19 @@ final class DragController {
         return span != Preferences.activationModifier && span.isHeld(in: NSEvent.modifierFlags)
     }
 
+    private func isLayerKeyHeld(in flags: NSEvent.ModifierFlags) -> Bool {
+        Preferences.usableLayerModifier?.isHeld(in: flags) ?? false
+    }
+
+    /// Switches the display under the cursor to its next layer, back to the first after the last.
+    private func showNextLayer() {
+        guard let screen = ScreenGeometry.screen(containing: ScreenGeometry.mouseLocation()) else { return }
+        let count = store.layout(for: screen).layers.count
+        guard count > 1 else { return }
+        layerIndex[screen.stableID] = ((layerIndex[screen.stableID] ?? 0) + 1) % count
+        spanAnchor = nil
+    }
+
     /// Updates the highlighted zone and the overlay from the cursor and the held keys.
     private func refresh() {
         guard let window = detector.draggedWindow else { return }
@@ -130,7 +156,7 @@ final class DragController {
         let point = ScreenGeometry.mouseLocation()
         guard let screen = ScreenGeometry.screen(containing: point) else { return }
         let screenID = screen.stableID
-        let zones = store.layout(for: screen).zones
+        let zones = store.layout(for: screen).zones(inLayer: layerIndex[screenID] ?? 0)
         let area = screen.axVisibleFrame
 
         var selection: [Zone] = []
@@ -153,6 +179,7 @@ final class DragController {
         }
 
         overlay.show(activeScreenID: screenID,
+                     layerIndex: layerIndex,
                      highlighted: target?.zoneIDs ?? [],
                      targetFrame: target?.frame,
                      below: window.windowID)
@@ -162,6 +189,7 @@ final class DragController {
         detector.reset()
         target = nil
         spanAnchor = nil
+        layerIndex = [:]
         overlay.hide()
     }
 }

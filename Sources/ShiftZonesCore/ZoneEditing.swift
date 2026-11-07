@@ -18,16 +18,17 @@ public enum SplitOrientation: Sendable {
 }
 
 /// Editor operations. All values are normalized; `threshold` is the distance within which edges snap.
+/// `reference` zones (the other layers) are only snapped to, never changed.
 public enum ZoneEditing {
     /// Edges closer than this are treated as the same line.
     static let linkTolerance = 0.002
 
     /// Moves a zone by (dx, dy), snapping its edges to the other zones' edges and to the 0, ½, 1 lines.
     public static func move(_ id: UUID, in zones: [Zone], dx: Double, dy: Double,
-                            threshold: (x: Double, y: Double)) -> [Zone] {
+                            threshold: (x: Double, y: Double), reference: [Zone] = []) -> [Zone] {
         zones.map { zone in
             guard zone.id == id else { return zone }
-            let others = zones.filter { $0.id != id }
+            let others = zones.filter { $0.id != id } + reference
             var rect = zone.rect
             rect.x = snapSpan(start: rect.x + dx, length: rect.width, to: guides(others, .x), threshold: threshold.x)
             rect.y = snapSpan(start: rect.y + dy, length: rect.height, to: guides(others, .y), threshold: threshold.y)
@@ -41,20 +42,17 @@ public enum ZoneEditing {
     /// together (like grid dividers); screen edges are never linked.
     public static func resize(_ id: UUID, in zones: [Zone], edges: ResizeEdges, dx: Double, dy: Double,
                               linked: Bool, threshold: (x: Double, y: Double),
-                              minSize: (width: Double, height: Double)) -> [Zone] {
+                              minSize: (width: Double, height: Double), reference: [Zone] = []) -> [Zone] {
         var result = zones
-        if edges.contains(.left) {
-            result = moveEdge(result, id: id, axis: .x, leading: true, delta: dx, linked: linked, threshold: threshold.x, minLength: minSize.width)
+        func move(_ axis: Axis, leading: Bool) {
+            result = moveEdge(result, id: id, axis: axis, leading: leading, delta: axis == .x ? dx : dy, linked: linked,
+                              threshold: axis == .x ? threshold.x : threshold.y,
+                              minLength: axis == .x ? minSize.width : minSize.height, reference: reference)
         }
-        if edges.contains(.right) {
-            result = moveEdge(result, id: id, axis: .x, leading: false, delta: dx, linked: linked, threshold: threshold.x, minLength: minSize.width)
-        }
-        if edges.contains(.top) {
-            result = moveEdge(result, id: id, axis: .y, leading: true, delta: dy, linked: linked, threshold: threshold.y, minLength: minSize.height)
-        }
-        if edges.contains(.bottom) {
-            result = moveEdge(result, id: id, axis: .y, leading: false, delta: dy, linked: linked, threshold: threshold.y, minLength: minSize.height)
-        }
+        if edges.contains(.left) { move(.x, leading: true) }
+        if edges.contains(.right) { move(.x, leading: false) }
+        if edges.contains(.top) { move(.y, leading: true) }
+        if edges.contains(.bottom) { move(.y, leading: false) }
         return result
     }
 
@@ -77,7 +75,7 @@ public enum ZoneEditing {
     enum Axis { case x, y }
 
     private static func moveEdge(_ zones: [Zone], id: UUID, axis: Axis, leading: Bool, delta: Double,
-                                 linked: Bool, threshold: Double, minLength: Double) -> [Zone] {
+                                 linked: Bool, threshold: Double, minLength: Double, reference: [Zone]) -> [Zone] {
         guard let target = zones.first(where: { $0.id == id }) else { return zones }
         let line = leading ? target.rect.start(axis) : target.rect.end(axis)
         let isScreenBorder = line < linkTolerance || line > 1 - linkTolerance
@@ -104,7 +102,7 @@ public enum ZoneEditing {
 
         let affected = starting.union(ending)
         var value = line + delta
-        if let snapped = nearest(value, in: guides(zones.filter { !affected.contains($0.id) }, axis), threshold: threshold) {
+        if let snapped = nearest(value, in: guides(zones.filter { !affected.contains($0.id) } + reference, axis), threshold: threshold) {
             value = snapped
         }
         value = min(max(value, lower), upper)

@@ -19,10 +19,12 @@ final class OverlayController {
     }
 
     /// - Parameters:
+    ///   - layerIndex: layer shown on each display; missing = the first one.
     ///   - highlighted: zones highlighted on the `activeScreenID` display.
     ///   - targetFrame: final frame (AX coordinates), outlined when several zones are combined.
     ///   - windowID: the dragged window; zones are drawn right below it.
-    func show(activeScreenID: String, highlighted: Set<UUID>, targetFrame: CGRect?, below windowID: CGWindowID?) {
+    func show(activeScreenID: String, layerIndex: [String: Int], highlighted: Set<UUID>, targetFrame: CGRect?,
+              below windowID: CGWindowID?) {
         let screens = NSScreen.screens.filter { Preferences.showOnAllScreens || $0.stableID == activeScreenID }
         let shownIDs = Set(screens.map(\.stableID))
         for (id, window) in windows where !shownIDs.contains(id) {
@@ -32,14 +34,25 @@ final class OverlayController {
             let id = screen.stableID
             let window = windows[id] ?? makeWindow(for: screen, id: id)
             let isActive = id == activeScreenID
+            let layout = store.layout(for: screen)
+            let layer = min(layerIndex[id] ?? 0, max(layout.layers.count - 1, 0))
             window.zoneView.configure(screen: screen,
-                                      zones: store.layout(for: screen).zones,
+                                      zones: layout.zones(inLayer: layer),
+                                      layerBadge: layerBadge(layer: layer, of: layout.layers.count, isActive: isActive),
                                       spacing: Preferences.spacing,
                                       highlighted: isActive ? highlighted : [],
                                       targetFrame: isActive ? targetFrame : nil)
             if !window.isVisible { present(window, below: windowID) }
         }
         isVisible = true
+    }
+
+    /// "Layer 2 of 3", plus the key to switch on the display under the cursor. Nil with a single layer.
+    private func layerBadge(layer: Int, of count: Int, isActive: Bool) -> String? {
+        guard count > 1 else { return nil }
+        let text = "Layer \(layer + 1) of \(count)"
+        guard isActive, let key = Preferences.usableLayerModifier else { return text }
+        return text + "  ·  press \(key.label) for the next"
     }
 
     func hide() {
@@ -108,6 +121,8 @@ final class OverlayView: NSView {
 
     private var items: [Item] = []
     private var targetFrame: CGRect?
+    private var layerBadge: String?
+    private var visibleArea: CGRect = .zero
 
     /// Zones are drawn at least this far apart, only to make them easier to tell apart.
     private static let minimumVisualSpacing = 6.0
@@ -115,7 +130,8 @@ final class OverlayView: NSView {
 
     override var isFlipped: Bool { true }
 
-    func configure(screen: NSScreen, zones: [Zone], spacing: Double, highlighted: Set<UUID>, targetFrame: CGRect?) {
+    func configure(screen: NSScreen, zones: [Zone], layerBadge: String?, spacing: Double, highlighted: Set<UUID>,
+                   targetFrame: CGRect?) {
         let origin = screen.axFrame.origin
         let area = screen.axVisibleFrame
         let newItems = zones.enumerated().map { index, zone in
@@ -125,9 +141,13 @@ final class OverlayView: NSView {
                  highlighted: highlighted.contains(zone.id))
         }
         let newTarget = highlighted.count > 1 ? targetFrame?.offsetBy(dx: -origin.x, dy: -origin.y) : nil
-        guard newItems != items || newTarget != self.targetFrame else { return }
+        let newArea = area.offsetBy(dx: -origin.x, dy: -origin.y)
+        guard newItems != items || newTarget != self.targetFrame || layerBadge != self.layerBadge || newArea != visibleArea
+        else { return }
         items = newItems
         self.targetFrame = newTarget
+        self.layerBadge = layerBadge
+        visibleArea = newArea
         needsDisplay = true
     }
 
@@ -148,6 +168,26 @@ final class OverlayView: NSView {
             accent.setStroke()
             path.stroke()
         }
+        if let layerBadge { drawBadge(layerBadge) }
+    }
+
+    /// Pill at the top center of the usable area.
+    private func drawBadge(_ text: String) {
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 15, weight: .semibold),
+            .foregroundColor: NSColor.white,
+        ]
+        let string = text as NSString
+        let size = string.size(withAttributes: attributes)
+        let pill = CGRect(x: visibleArea.midX - size.width / 2 - 16, y: visibleArea.minY + 20,
+                          width: size.width + 32, height: size.height + 14)
+        let path = NSBezierPath(roundedRect: pill, xRadius: pill.height / 2, yRadius: pill.height / 2)
+        NSColor(white: 0.08, alpha: 0.8).setFill()
+        path.fill()
+        path.lineWidth = 1
+        NSColor(white: 1, alpha: 0.3).setStroke()
+        path.stroke()
+        string.draw(at: CGPoint(x: pill.minX + 16, y: pill.minY + 7), withAttributes: attributes)
     }
 
     private func drawNumber(_ number: Int, in rect: CGRect, emphasized: Bool) {

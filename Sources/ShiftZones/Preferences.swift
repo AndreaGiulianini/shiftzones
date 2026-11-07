@@ -34,6 +34,7 @@ enum PreferencesKey {
     static let enabled = "enabled"
     static let activationModifier = "activationModifier"
     static let spanModifier = "spanModifier"
+    static let layerModifier = "layerModifier"
     static let showOnAllScreens = "showOnAllScreens"
     static let spacing = "spacing"
     static let restoreSizeOnUnsnap = "restoreSizeOnUnsnap"
@@ -47,6 +48,7 @@ enum Preferences {
         static let activationModifier = ModifierKey.shift
         // Not ⌥: on macOS 15+ holding ⌥ while dragging triggers the native window tiling.
         static let spanModifier = ModifierKey.control
+        static let layerModifier = ModifierKey.command
         static let showOnAllScreens = true
         static let spacing = 8.0
         static let restoreSizeOnUnsnap = true
@@ -60,6 +62,7 @@ enum Preferences {
             PreferencesKey.enabled: Default.enabled,
             PreferencesKey.activationModifier: Default.activationModifier.rawValue,
             PreferencesKey.spanModifier: Default.spanModifier.rawValue,
+            PreferencesKey.layerModifier: Default.layerModifier.rawValue,
             PreferencesKey.showOnAllScreens: Default.showOnAllScreens,
             PreferencesKey.spacing: Default.spacing,
             PreferencesKey.restoreSizeOnUnsnap: Default.restoreSizeOnUnsnap,
@@ -80,6 +83,17 @@ enum Preferences {
     /// Extra key that extends the selection across several zones.
     static var spanModifier: ModifierKey {
         ModifierKey(rawValue: defaults.string(forKey: PreferencesKey.spanModifier) ?? "") ?? Default.spanModifier
+    }
+
+    /// Key pressed while dragging to show the next layer of zones.
+    static var layerModifier: ModifierKey {
+        ModifierKey(rawValue: defaults.string(forKey: PreferencesKey.layerModifier) ?? "") ?? Default.layerModifier
+    }
+
+    /// The layer key, unless it is turned off or already one of the other two keys.
+    static var usableLayerModifier: ModifierKey? {
+        let key = layerModifier
+        return key == .off || key == activationModifier || key == spanModifier ? nil : key
     }
 
     static var showOnAllScreens: Bool { defaults.bool(forKey: PreferencesKey.showOnAllScreens) }

@@ -23,13 +23,13 @@ public struct MonitorZones: Equatable, Sendable {
     public var id: String
     public var name: String
     public var resolution: String?
-    public var zones: [Zone]
+    public var layout: ZoneLayout
 
-    public init(id: String, name: String, resolution: String?, zones: [Zone]) {
+    public init(id: String, name: String, resolution: String?, layout: ZoneLayout) {
         self.id = id
         self.name = name
         self.resolution = resolution
-        self.zones = zones
+        self.layout = layout
     }
 }
 
@@ -44,8 +44,11 @@ public struct ZoneFileError: Error, Equatable, Sendable {
 ///     id = 37D8832A-2D66-02CA-B9F7-8F30A301B230
 ///       0    0   25  100
 ///      25    0   50  100
+///     ---
+///       0    0   50  100
 ///
 /// Each zone line is `x y width height` as % of the usable area, origin at the top-left.
+/// A line of dashes starts a new layer: zones in different layers can overlap.
 public enum ZoneFile {
     public struct Content: Equatable, Sendable {
         /// In file order.
@@ -60,9 +63,11 @@ public enum ZoneFile {
             var id: String?
             var name: String
             var resolution: String?
-            var zones: [Zone] = []
+            var layers: [[Zone]] = [[]]
             let line: Int
             let listedAsConnected: Bool
+
+            mutating func add(_ zone: Zone) { layers[layers.count - 1].append(zone) }
         }
 
         func fail(_ line: Int, _ message: String) -> Result<Content, ZoneFileError> {
@@ -110,8 +115,13 @@ public enum ZoneFile {
                 continue
             }
 
+            if content.allSatisfy(isLayerSeparator) {
+                sections[sections.count - 1].layers.append([])
+                continue
+            }
+
             switch parseZone(content) {
-            case .success(let zone): sections[sections.count - 1].zones.append(zone)
+            case .success(let zone): sections[sections.count - 1].add(zone)
             case .failure(let message): return fail(number, message.text)
             }
         }
@@ -134,7 +144,8 @@ public enum ZoneFile {
                 return fail(section.line, "this display is already described at line \(previous)")
             }
             firstLine[id] = section.line
-            monitors.append(MonitorZones(id: id, name: section.name, resolution: section.resolution, zones: section.zones))
+            monitors.append(MonitorZones(id: id, name: section.name, resolution: section.resolution,
+                                         layout: ZoneLayout(layers: section.layers)))
             if section.listedAsConnected { connectedIDs.insert(id) }
         }
         return .success(Content(monitors: monitors, listedAsConnected: connectedIDs))
@@ -171,13 +182,21 @@ public enum ZoneFile {
         "#",
         "# as % of the usable screen area (menu bar and Dock excluded), with the origin at the top-left.",
         "# Decimals (33.3 or 33,3) and a % sign (25%) are allowed. Anything after # is a comment.",
-        "# The number shown on each zone is the position of its line. A display with no lines has no zones.",
+        "# The number shown on each zone is the position of its line in its layer. A display with no lines",
+        "# has no zones.",
         "#",
-        "# Example: three columns 30% | 40% | 30%, with the third one split in half vertically",
+        "# A --- line starts a new layer: zones in different layers can overlap. While you drag a window",
+        "# one layer is shown at a time; press the layer key (⌘ by default) to switch to the next one.",
+        "#",
+        "# Example: three columns 30% | 40% | 30%, with the third one split in half vertically, and a",
+        "# second layer with the two halves of the screen",
         "#" + columns(["0", "0", "30", "100"]),
         "#" + columns(["30", "0", "40", "100"]),
         "#" + columns(["70", "0", "30", "50"]),
         "#" + columns(["70", "50", "30", "50"]),
+        "#     ---",
+        "#" + columns(["0", "0", "50", "100"]),
+        "#" + columns(["50", "0", "50", "100"]),
         "#",
         "# Changes apply as soon as you save. When a display is connected or disconnected the file is",
         "# rewritten: your zones are kept, hand-written comments are not.",
@@ -187,17 +206,27 @@ public enum ZoneFile {
         let title = ([monitor.name] + [monitor.resolution].compactMap { $0 } + (isPrimary ? ["primary"] : []))
             .joined(separator: " · ")
         var lines = ["[\(title)]", "id = \(monitor.id)"]
-        guard !monitor.zones.isEmpty else {
+        guard !monitor.layout.layers.isEmpty else {
             return lines + ["# no zones: zones are turned off on this display"]
         }
         lines.append("#" + String(columns(["x", "y", "width", "height"]).dropFirst()))
-        for zone in monitor.zones {
-            // Round the edges, not the sizes, so that adjacent zones stay exactly flush.
-            let minX = percent(zone.rect.minX), maxX = percent(zone.rect.maxX)
-            let minY = percent(zone.rect.minY), maxY = percent(zone.rect.maxY)
-            lines.append(columns([minX, minY, maxX - minX, maxY - minY].map(format)))
+        for (index, layer) in monitor.layout.layers.enumerated() {
+            if index > 0 { lines.append("---  # layer \(index + 1)") }
+            lines += layer.map(line)
         }
         return lines
+    }
+
+    private static func line(_ zone: Zone) -> String {
+        // Round the edges, not the sizes, so that adjacent zones stay exactly flush.
+        let minX = percent(zone.rect.minX), maxX = percent(zone.rect.maxX)
+        let minY = percent(zone.rect.minY), maxY = percent(zone.rect.maxY)
+        return columns([minX, minY, maxX - minX, maxY - minY].map(format))
+    }
+
+    /// `---`, also after a text editor turned it into a dash (—).
+    private static func isLayerSeparator(_ character: Character) -> Bool {
+        "-–—─".contains(character)
     }
 
     private static func columns(_ values: [String]) -> String {

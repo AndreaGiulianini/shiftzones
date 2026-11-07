@@ -34,9 +34,11 @@ final class SettingsModel: ObservableObject {
         launchAtLogin = SMAppService.mainApp.status == .enabled
         fileError = store.error.map { "Line \($0.line): \($0.message)" }
         screens = ScreenGeometry.screensLeftToRight.map { screen in
-            let count = store.layout(for: screen).zones.count
+            let layout = store.layout(for: screen)
+            let count = layout.zoneCount
             var parts = ["\(Int(screen.frame.width)) × \(Int(screen.frame.height)) pt",
-                         count == 1 ? "1 zone" : "\(count) zones"]
+                         (count == 1 ? "1 zone" : "\(count) zones")
+                            + (layout.layers.count > 1 ? " in \(layout.layers.count) layers" : "")]
             if screen == NSScreen.screens.first { parts.append("primary") }
             return ScreenInfo(id: screen.stableID, name: screen.localizedName, details: parts.joined(separator: " · "))
         }
@@ -59,6 +61,7 @@ struct SettingsView: View {
     @AppStorage(PreferencesKey.enabled) private var enabled = Preferences.Default.enabled
     @AppStorage(PreferencesKey.activationModifier) private var activation = Preferences.Default.activationModifier
     @AppStorage(PreferencesKey.spanModifier) private var span = Preferences.Default.spanModifier
+    @AppStorage(PreferencesKey.layerModifier) private var layer = Preferences.Default.layerModifier
     @AppStorage(PreferencesKey.showOnAllScreens) private var showOnAllScreens = Preferences.Default.showOnAllScreens
     @AppStorage(PreferencesKey.restoreSizeOnUnsnap) private var restoreSize = Preferences.Default.restoreSizeOnUnsnap
     @AppStorage(PreferencesKey.spacing) private var spacing = Preferences.Default.spacing
@@ -96,6 +99,17 @@ struct SettingsView: View {
                     ForEach(ModifierKey.allCases.filter { $0 != activation }) { key in
                         Text(key.label).tag(key)
                     }
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Picker("Key to switch layer", selection: $layer) {
+                        ForEach(ModifierKey.allCases.filter { $0 == .off || ($0 != activation && $0 != span) }) { key in
+                            Text(key.label).tag(key)
+                        }
+                    }
+                    Text("Zones in different layers can overlap: press this key while dragging to show the next layer.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 LabeledContent("Spacing between zones") {
                     HStack {
@@ -178,6 +192,14 @@ struct SettingsView: View {
         .frame(minWidth: 540, minHeight: 480)
         .onChange(of: activation) { newValue in
             if span == newValue { span = .off }
+            if layer == newValue { layer = .off }
+        }
+        .onChange(of: span) { newValue in
+            if layer == newValue { layer = .off }
+        }
+        .onAppear {
+            // Set before layers existed: ⌘ may already be one of the other keys.
+            if layer == activation || layer == span { layer = .off }
         }
     }
 }

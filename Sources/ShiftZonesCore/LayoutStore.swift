@@ -29,7 +29,7 @@ public final class LayoutStore {
     }
 
     public func layout(forDisplay displayID: String, aspectRatio: Double) -> ZoneLayout {
-        if let monitor = monitors[displayID] { return ZoneLayout(zones: monitor.zones) }
+        if let monitor = monitors[displayID] { return monitor.layout }
         return Self.defaultLayout(aspectRatio: aspectRatio)
     }
 
@@ -66,8 +66,8 @@ public final class LayoutStore {
 
     /// Save from the visual editor.
     public func setLayout(_ layout: ZoneLayout, forDisplay displayID: String, name: String) {
-        var monitor = monitors[displayID] ?? MonitorZones(id: displayID, name: name, resolution: nil, zones: [])
-        monitor.zones = layout.zones
+        var monitor = monitors[displayID] ?? MonitorZones(id: displayID, name: name, resolution: nil, layout: ZoneLayout())
+        monitor.layout = layout
         monitors[displayID] = monitor
         regenerate()
     }
@@ -110,7 +110,7 @@ public final class LayoutStore {
 
         let current = connected.map { monitor in
             MonitorZones(id: monitor.id, name: monitor.name, resolution: monitor.resolution,
-                         zones: monitors[monitor.id]?.zones ?? Self.defaultLayout(aspectRatio: monitor.aspectRatio).zones)
+                         layout: monitors[monitor.id]?.layout ?? Self.defaultLayout(aspectRatio: monitor.aspectRatio))
         }
         let connectedIDs = Set(connected.map(\.id))
         var seen: Set<String> = []

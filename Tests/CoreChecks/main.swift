@@ -54,6 +54,14 @@ check(ZoneGeometry.zone(at: CGPoint(x: 50, y: 50), in: grid4, area: area) == nil
 let big = Zone(rect: .full), small = Zone(rect: ZoneRect(x: 0.4, y: 0.4, width: 0.2, height: 0.2))
 check(ZoneGeometry.zone(at: CGPoint(x: 600, y: 275), in: [big, small], area: area)?.id == small.id, "overlapping: the smallest wins")
 
+// MARK: Layers
+
+let halvesLayer = LayoutTemplate.columns.zones(count: 2)
+let layered = ZoneLayout(layers: [[], LayoutTemplate.columns.zones(count: 3), [], halvesLayer])
+check(layered.layers.count == 2 && layered.zoneCount == 5, "empty layers are dropped: \(layered.layers.map(\.count))")
+check(layered.zones(inLayer: 1) == halvesLayer && layered.zones(inLayer: 7) == halvesLayer, "layer index past the end: the last one")
+check(ZoneLayout(zones: []).layers.isEmpty && ZoneLayout().zones(inLayer: 0).isEmpty, "no zones = no layers")
+
 // MARK: Combining zones
 
 let priority5 = LayoutTemplate.priorityGrid.zones(count: 5)   // top-left, bottom-left, center, top-right, bottom-right
@@ -74,6 +82,13 @@ let clamped = ZoneEditing.move(pair[1].id, in: pair, dx: 5, dy: -5, threshold: (
 check(approx(clamped[1].rect.maxX, 1) && approx(clamped[1].rect.y, 0), "stays inside the area")
 check(clamped[0] == pair[0], "other zones don't change")
 
+let lone = [Zone(rect: ZoneRect(x: 0.6, y: 0.2, width: 0.3, height: 0.3))]
+let otherLayer = [Zone(rect: ZoneRect(x: 0, y: 0, width: 0.45, height: 1))]
+let toOtherLayer = ZoneEditing.move(lone[0].id, in: lone, dx: -0.145, dy: 0, threshold: (0.01, 0.01), reference: otherLayer)
+check(toOtherLayer.count == 1 && approx(toOtherLayer[0].rect.x, 0.45), "snaps to another layer's edge: \(toOtherLayer[0].rect.x)")
+check(approx(ZoneEditing.move(lone[0].id, in: lone, dx: -0.145, dy: 0, threshold: (0.01, 0.01))[0].rect.x, 0.455),
+      "without the other layer: no snapping")
+
 // MARK: Editor: resizing with linked edges
 
 let columns3 = LayoutTemplate.columns.zones(count: 3)
@@ -90,6 +105,11 @@ check(approx(border[0].rect.minX, 0.1) && border[1] == columns3[1], "the screen 
 let corner = ZoneEditing.resize(columns3[1].id, in: columns3, edges: [.right, .bottom], dx: 0.02, dy: -0.47, linked: true, threshold: (0.05, 0.05), minSize: min5)
 check(approx(corner[1].rect.maxX, 2.0 / 3 + 0.02) && approx(corner[2].rect.minX, 2.0 / 3 + 0.02), "corner: right edge linked")
 check(approx(corner[1].rect.maxY, 0.5) && approx(corner[2].rect.maxY, 1), "corner: snaps at half height, bottom edge not linked")
+
+let toLayerEdge = ZoneEditing.resize(columns3[0].id, in: columns3, edges: .right, dx: 0.11, dy: 0, linked: true,
+                                     threshold: (0.01, 0.01), minSize: min5, reference: otherLayer)
+check(approx(toLayerEdge[0].rect.maxX, 0.45) && approx(toLayerEdge[1].rect.minX, 0.45) && toLayerEdge.count == 3,
+      "resizing snaps to another layer's edge: \(toLayerEdge[0].rect.maxX)")
 
 // MARK: Editor: splitting
 
@@ -168,8 +188,10 @@ id = WIDE
 switch ZoneFile.parse(sample, connected: [wide, laptop]) {
 case .success(let content):
     check(content.monitors.map(\.id) == ["WIDE", "LAPTOP"], "ids read and matched by name: \(content.monitors.map(\.id))")
-    check(rects(content.monitors[0].zones) == [[0, 0, 0.3, 1], [0.3, 0, 0.4, 1], [0.7, 0, 0.3, 0.5], [0.7, 0.5, 0.3, 0.5]],
-          "percentages → fractions: \(rects(content.monitors[0].zones))")
+    let zones = content.monitors[0].layout.zones(inLayer: 0)
+    check(rects(zones) == [[0, 0, 0.3, 1], [0.3, 0, 0.4, 1], [0.7, 0, 0.3, 0.5], [0.7, 0.5, 0.3, 0.5]],
+          "percentages → fractions: \(rects(zones))")
+    check(content.monitors.allSatisfy { $0.layout.layers.count == 1 }, "no --- lines: a single layer")
     check(content.monitors[0].resolution == "3440 × 1440", "resolution from the header")
     check(content.listedAsConnected == ["WIDE", "LAPTOP"], "both listed as connected")
 case .failure(let error):
@@ -196,8 +218,30 @@ expectError("[Unknown]\n0 0 50 100", line: 1, containing: "id")
 expectError("[A]\nid = WIDE\n\n[B]\nid = WIDE", line: 4, containing: "line 1")
 expectError("[A\nid = WIDE", line: 1, containing: "]")
 
+let layeredText = """
+[A]
+id = WIDE
+ 0 0 25 100
+25 0 50 100
+75 0 25 100
+---   # layer 2
+ 0 0 50 100
+50 0 50 100
+—
+---
+"""
+switch ZoneFile.parse(layeredText, connected: []) {
+case .success(let content):
+    let layers = content.monitors[0].layout.layers
+    check(layers.map(\.count) == [3, 2], "--- starts a layer, empty ones are dropped: \(layers.map(\.count))")
+    check(rects(layers[1]) == [[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]], "zones of the second layer: \(rects(layers[1]))")
+case .failure(let error):
+    check(false, "file with layers is invalid: line \(error.line) \(error.message)")
+}
+expectError("---\n[A]\nid = WIDE", line: 1, containing: "header")
+
 if case .success(let content) = ZoneFile.parse("[A]\nid = WIDE\n", connected: []) {
-    check(content.monitors[0].zones.isEmpty, "display without lines = no zones")
+    check(content.monitors[0].layout.layers.isEmpty, "display without lines = no zones")
 }
 let withDisconnected = "[A]\nid = WIDE\n0 0 100 100\n\n# ─── Disconnected displays ───\n[B]\nid = OLD\n0 0 50 100\n"
 if case .success(let content) = ZoneFile.parse(withDisconnected, connected: [wide]) {
@@ -209,18 +253,28 @@ if case .success(let content) = ZoneFile.parse(withDisconnected, connected: [wid
 // MARK: Zones file: writing
 
 let thirds = LayoutTemplate.columns.zones(count: 3)
-let rendered = ZoneFile.render(connected: [MonitorZones(id: "WIDE", name: "ZQE-CBA", resolution: "3440 × 1440", zones: thirds)],
+let rendered = ZoneFile.render(connected: [MonitorZones(id: "WIDE", name: "ZQE-CBA", resolution: "3440 × 1440", layout: ZoneLayout(zones: thirds))],
                                primaryID: "WIDE",
-                               disconnected: [MonitorZones(id: "OLD", name: "Old", resolution: nil, zones: [])])
+                               disconnected: [MonitorZones(id: "OLD", name: "Old", resolution: nil, layout: ZoneLayout())])
 check(rendered.contains("[ZQE-CBA · 3440 × 1440 · primary]\nid = WIDE"), "header and id")
 check(rendered.contains("\n  33.33      0  33.34    100\n"), "rounded edges, zones stay flush:\n\(rendered)")
 if case .success(let content) = ZoneFile.parse(rendered, connected: []) {
-    let back = content.monitors[0].zones
+    let back = content.monitors[0].layout.zones(inLayer: 0)
     check(zip(back, thirds).allSatisfy { abs($0.rect.minX - $1.rect.minX) < 1e-4 && abs($0.rect.maxX - $1.rect.maxX) < 1e-4 },
           "round trip")
-    check(content.listedAsConnected == ["WIDE"] && content.monitors[1].zones.isEmpty, "disconnected display without zones")
+    check(content.listedAsConnected == ["WIDE"] && content.monitors[1].layout.layers.isEmpty, "disconnected display without zones")
 } else {
     check(false, "the generated file can't be read back")
+}
+
+let renderedLayers = ZoneFile.render(
+    connected: [MonitorZones(id: "WIDE", name: "ZQE-CBA", resolution: nil, layout: ZoneLayout(layers: [thirds, halvesLayer]))],
+    primaryID: nil, disconnected: [])
+check(renderedLayers.contains("    100\n---  # layer 2\n      0      0     50    100\n"), "layer separator:\n\(renderedLayers)")
+if case .success(let content) = ZoneFile.parse(renderedLayers, connected: []) {
+    check(content.monitors[0].layout.layers.map(\.count) == [3, 2], "round trip with layers")
+} else {
+    check(false, "the generated file with layers can't be read back")
 }
 
 // MARK: Zones file: regeneration
@@ -233,12 +287,12 @@ let zonesURL = directory.appendingPathComponent("zones.conf")
 let store = LayoutStore(fileURL: zonesURL)
 store.update(connected: [wide])
 check(fileText().contains("id = WIDE"), "first launch: file created")
-check(store.layout(forDisplay: "WIDE", aspectRatio: 1).zones.count == 3, "ultrawide: 3 default zones")
+check(store.layout(forDisplay: "WIDE", aspectRatio: 1).zoneCount == 3, "ultrawide: 3 default zones")
 
 let edited = "[ZQE-CBA]\nid = WIDE\n0 0 50 100\n50 0 50 100  # my comment\n"
 try! edited.write(to: zonesURL, atomically: true, encoding: .utf8)
 check(store.reload(), "manual edit detected")
-check(rects(store.layout(forDisplay: "WIDE", aspectRatio: 1).zones) == [[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]], "hand-edited zones active")
+check(rects(store.layout(forDisplay: "WIDE", aspectRatio: 1).zones(inLayer: 0)) == [[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]], "hand-edited zones active")
 check(!store.reload(), "unchanged file: no reload")
 
 LayoutStore(fileURL: zonesURL).update(connected: [wide])
@@ -246,8 +300,8 @@ check(fileText() == edited, "relaunch with the same displays: file left as is")
 
 store.update(connected: [laptop, wide])
 check(fileText().contains("id = LAPTOP") && !fileText().contains("my comment"), "display connected: file regenerated")
-check(rects(store.layout(forDisplay: "WIDE", aspectRatio: 1).zones) == [[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]], "edited zones kept")
-check(store.layout(forDisplay: "LAPTOP", aspectRatio: 1).zones.count == 2, "new display: default zones")
+check(rects(store.layout(forDisplay: "WIDE", aspectRatio: 1).zones(inLayer: 0)) == [[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]], "edited zones kept")
+check(store.layout(forDisplay: "LAPTOP", aspectRatio: 1).zoneCount == 2, "new display: default zones")
 check(position("id = LAPTOP")! < position("id = WIDE")!, "displays ordered left to right")
 
 let beforeReconfiguration = fileText()
@@ -262,7 +316,7 @@ check(!fileText().contains("Disconnected displays"), "display reconnected: back 
 let broken = fileText().replacingOccurrences(of: "id = LAPTOP\n", with: "id = LAPTOP\n1 2 3\n")
 try! broken.write(to: zonesURL, atomically: true, encoding: .utf8)
 check(store.reload() && store.error?.message.contains("4 numbers") == true, "error detected: \(String(describing: store.error))")
-check(store.layout(forDisplay: "WIDE", aspectRatio: 1).zones.count == 2, "with errors the last valid zones stay active")
+check(store.layout(forDisplay: "WIDE", aspectRatio: 1).zoneCount == 2, "with errors the last valid zones stay active")
 let restarted = LayoutStore(fileURL: zonesURL)
 restarted.update(connected: [laptop, wide])
 check(fileText() == broken && restarted.error != nil, "at launch a file with errors is not rewritten")
@@ -271,7 +325,7 @@ store.update(connected: [laptop, wide, superWide])
 check(store.error == nil && fileText().contains("id = SUPER"), "file with errors + new display: regenerated")
 check((try? String(contentsOf: store.backupURL, encoding: .utf8)) == broken, "backup of the file with errors")
 check(fileText().contains("zones.conf.bak"), "note about the backup in the file")
-check(rects(store.layout(forDisplay: "WIDE", aspectRatio: 1).zones) == [[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]], "valid zones kept")
+check(rects(store.layout(forDisplay: "WIDE", aspectRatio: 1).zones(inLayer: 0)) == [[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]], "valid zones kept")
 
 try? FileManager.default.removeItem(at: zonesURL)
 check(store.reload() && fileText().contains("id = SUPER"), "file deleted: recreated")
@@ -279,7 +333,12 @@ check(store.reload() && fileText().contains("id = SUPER"), "file deleted: recrea
 store.setLayout(ZoneLayout(zones: LayoutTemplate.columns.zones(count: 4)), forDisplay: "SUPER", name: "PHL 499P9")
 let reread = LayoutStore(fileURL: zonesURL)
 reread.update(connected: [laptop, wide, superWide])
-check(reread.layout(forDisplay: "SUPER", aspectRatio: 1).zones.count == 4, "editor save written to the file")
+check(reread.layout(forDisplay: "SUPER", aspectRatio: 1).zoneCount == 4, "editor save written to the file")
+store.setLayout(ZoneLayout(layers: [thirds, halvesLayer]), forDisplay: "SUPER", name: "PHL 499P9")
+let rereadLayers = LayoutStore(fileURL: zonesURL)
+rereadLayers.update(connected: [laptop, wide, superWide])
+check(rereadLayers.layout(forDisplay: "SUPER", aspectRatio: 1).layers.map(\.count) == [3, 2], "layers saved and read back")
+check(rereadLayers.layout(forDisplay: "WIDE", aspectRatio: 1).layers.count == 1, "other displays keep a single layer")
 try? FileManager.default.removeItem(at: directory)
 
 print(failures == 0 ? "✓ all checks passed" : "✗ \(failures) checks failed")

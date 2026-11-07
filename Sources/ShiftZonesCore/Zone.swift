@@ -50,11 +50,27 @@ public struct Zone: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
-/// The zones of one display. An empty layout turns zones off on that display.
+/// The zones of one display, in layers. An empty layout turns zones off on that display.
+///
+/// Zones in different layers can overlap: while dragging a window one layer is shown at a time,
+/// and a key switches to the next one.
 public struct ZoneLayout: Codable, Hashable, Sendable {
-    public var zones: [Zone]
+    /// Never contains empty layers.
+    public private(set) var layers: [[Zone]]
 
+    public init(layers: [[Zone]]) {
+        self.layers = layers.filter { !$0.isEmpty }
+    }
+
+    /// A single layer.
     public init(zones: [Zone] = []) {
-        self.zones = zones
+        self.init(layers: [zones])
+    }
+
+    public var zoneCount: Int { layers.reduce(0) { $0 + $1.count } }
+
+    /// The zones of a layer; an index out of range gives the nearest layer.
+    public func zones(inLayer index: Int) -> [Zone] {
+        layers.isEmpty ? [] : layers[min(max(index, 0), layers.count - 1)]
     }
 }

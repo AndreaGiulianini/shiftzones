@@ -12,6 +12,8 @@ final class ZoneEditor: NSObject {
     private let canvas: ZoneCanvasView
     private var toolbar: NSPanel!
     private var templates: NSSegmentedControl!
+    private var layerPicker: NSSegmentedControl!
+    private var layerButtons: NSSegmentedControl!
     private let stepper = NSStepper()
     private let countLabel = NSTextField(labelWithString: "")
 
@@ -22,12 +24,13 @@ final class ZoneEditor: NSObject {
         self.onClose = onClose
         let origin = screen.axFrame.origin
         canvas = ZoneCanvasView(area: screen.axVisibleFrame.offsetBy(dx: -origin.x, dy: -origin.y),
-                                zones: store.layout(for: screen).zones)
+                                layout: store.layout(for: screen))
         window = EditorWindow(screen: screen)
         super.init()
         canvas.delegate = self
         window.contentView = canvas
         toolbar = makeToolbar()
+        updateLayerControls()
     }
 
     func show() {
@@ -47,7 +50,7 @@ final class ZoneEditor: NSObject {
     private func finish(saved: Bool) {
         guard window.isVisible else { return }
         if saved {
-            store.setLayout(ZoneLayout(zones: canvas.zones), forDisplay: screenID, name: screen.localizedName)
+            store.setLayout(ZoneLayout(layers: canvas.layers), forDisplay: screenID, name: screen.localizedName)
         }
         window.removeChildWindow(toolbar)
         toolbar.orderOut(nil)
@@ -68,6 +71,39 @@ final class ZoneEditor: NSObject {
         if LayoutTemplate.allCases.indices.contains(templates.selectedSegment) {
             applyTemplate(templates)
         }
+    }
+
+    @objc private func layerSelected(_ sender: NSSegmentedControl) {
+        canvas.selectLayer(sender.selectedSegment)
+    }
+
+    @objc private func layerButtonPressed(_ sender: NSSegmentedControl) {
+        if sender.selectedSegment == 0 { canvas.addLayer() } else { canvas.removeCurrentLayer() }
+    }
+
+    /// Matches the layer controls and the zone count to the canvas.
+    private func updateLayerControls() {
+        let count = canvas.layers.count
+        layerPicker.segmentCount = count
+        for index in 0..<count {
+            layerPicker.setLabel("\(index + 1)", forSegment: index)
+            layerPicker.setWidth(26, forSegment: index)
+        }
+        layerPicker.selectedSegment = canvas.currentLayer
+        layerButtons.setEnabled(count < ZoneCanvasView.maximumLayers, forSegment: 0)
+        layerButtons.setEnabled(count > 1, forSegment: 1)
+
+        templates.selectedSegment = -1
+        if !canvas.zones.isEmpty {
+            stepper.integerValue = min(canvas.zones.count, 12)
+            countLabel.stringValue = "\(stepper.integerValue)"
+        }
+
+        // The toolbar grows with the layers: keep it centered where it is.
+        guard let toolbar, let content = toolbar.contentView else { return }
+        let old = toolbar.frame, size = content.fittingSize
+        toolbar.setFrame(NSRect(x: old.midX - size.width / 2, y: old.maxY - size.height, width: size.width, height: size.height),
+                         display: true)
     }
 
     @objc private func addZone() { canvas.addZone() }
@@ -94,6 +130,14 @@ final class ZoneEditor: NSObject {
         countLabel.alignment = .right
         countLabel.widthAnchor.constraint(equalToConstant: 20).isActive = true
 
+        layerPicker = NSSegmentedControl(labels: ["1"], trackingMode: .selectOne,
+                                         target: self, action: #selector(layerSelected(_:)))
+        layerButtons = NSSegmentedControl(images: [NSImage(named: NSImage.addTemplateName)!,
+                                                   NSImage(named: NSImage.removeTemplateName)!],
+                                          trackingMode: .momentary, target: self, action: #selector(layerButtonPressed(_:)))
+        layerButtons.setToolTip("Add a layer: its zones can overlap the other layers", forSegment: 0)
+        layerButtons.setToolTip("Delete this layer and its zones", forSegment: 1)
+
         let save = NSButton(title: "Save", target: self, action: #selector(savePressed))
         save.bezelColor = .controlAccentColor
         save.keyEquivalent = "\r"
@@ -101,6 +145,7 @@ final class ZoneEditor: NSObject {
         let row = NSStackView(views: [
             title, separator(),
             templates, NSTextField(labelWithString: "Zones:"), countLabel, stepper, separator(),
+            NSTextField(labelWithString: "Layer:"), layerPicker, layerButtons, separator(),
             NSButton(title: "Add Zone", target: self, action: #selector(addZone)),
             NSButton(title: "Remove All", target: self, action: #selector(removeAll)), separator(),
             NSButton(title: "Cancel", target: self, action: #selector(cancelPressed)), save,
@@ -109,9 +154,12 @@ final class ZoneEditor: NSObject {
         row.alignment = .centerY
         row.setClippingResistancePriority(.required, for: .horizontal)
 
+        let layerKey = Preferences.usableLayerModifier
         let hints = [
             "Drag to move · drag the edges to resize (⌥ this zone only, ⌘ no snapping)",
             "Double-click empty space to add · right-click to split · ⌫ delete · ⌘Z undo · ↩ save · esc exit",
+            "Zones in different layers can overlap · ⇥ next layer"
+                + (layerKey.map { " · while dragging a window, press \($0.label) for the next layer" } ?? ""),
         ].map { text -> NSTextField in
             let label = NSTextField(labelWithString: text)
             label.font = .systemFont(ofSize: 11)
@@ -168,6 +216,7 @@ extension ZoneEditor: ZoneCanvasDelegate {
     func canvasRequestsSave() { finish(saved: true) }
     func canvasRequestsCancel() { finish(saved: false) }
     func canvasDidEditManually() { templates.selectedSegment = -1 }
+    func canvasDidChangeLayers() { updateLayerControls() }
 }
 
 /// Covers the whole display (menu bar and Dock included) while staying below context menus.

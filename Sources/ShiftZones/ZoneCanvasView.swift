@@ -7,35 +7,57 @@ protocol ZoneCanvasDelegate: AnyObject {
     func canvasRequestsCancel()
     /// A manual edit (not applying a template).
     func canvasDidEditManually()
+    /// Layers added, removed or switched.
+    func canvasDidChangeLayers()
 }
 
 /// The editor canvas: zones are moved, resized, split and deleted with the mouse.
+/// Only the current layer is edited; the other layers are drawn as outlines and their edges attract.
 final class ZoneCanvasView: NSView {
     weak var delegate: ZoneCanvasDelegate?
 
-    private(set) var zones: [Zone] { didSet { needsDisplay = true } }
+    /// Never empty; a layer can be empty while editing.
+    private(set) var layers: [[Zone]] { didSet { needsDisplay = true } }
+    private(set) var currentLayer = 0 { didSet { needsDisplay = true } }
     private var selectedID: UUID? { didSet { needsDisplay = true } }
     /// Usable area of the display, in view coordinates.
     private let area: CGRect
-    private var history: [[Zone]] = []
+    private var history: [Snapshot] = []
     private var interaction: Interaction?
+
+    private struct Snapshot {
+        let layers: [[Zone]]
+        let currentLayer: Int
+    }
 
     private struct Interaction {
         let zoneID: UUID
         /// Empty = move.
         let edges: ResizeEdges
-        let startZones: [Zone]
+        let start: Snapshot
         let startPoint: CGPoint
     }
 
+    static let maximumLayers = 6
     private static let edgeTolerance: CGFloat = 8
     private static let magnetDistance: CGFloat = 12
     private static let minimumZoneSize: CGFloat = 80
 
-    init(area: CGRect, zones: [Zone]) {
+    init(area: CGRect, layout: ZoneLayout) {
         self.area = area
-        self.zones = zones
+        self.layers = layout.layers.isEmpty ? [[]] : layout.layers
         super.init(frame: .zero)
+    }
+
+    /// Zones of the current layer.
+    private(set) var zones: [Zone] {
+        get { layers[currentLayer] }
+        set { layers[currentLayer] = newValue }
+    }
+
+    /// Zones of the other layers.
+    private var referenceZones: [Zone] {
+        layers.enumerated().filter { $0.offset != currentLayer }.flatMap(\.element)
     }
 
     @available(*, unavailable)
@@ -51,6 +73,41 @@ final class ZoneCanvasView: NSView {
         pushHistory()
         zones = newZones
         selectedID = nil
+    }
+
+    // MARK: - Layers
+
+    func selectLayer(_ index: Int) {
+        // Not while a zone is being dragged: the drag writes into the current layer.
+        guard interaction == nil, layers.indices.contains(index), index != currentLayer else { return }
+        currentLayer = index
+        selectedID = nil
+        delegate?.canvasDidChangeLayers()
+    }
+
+    /// Adds an empty layer after the last one and switches to it.
+    func addLayer() {
+        guard layers.count < Self.maximumLayers else { NSSound.beep(); return }
+        pushHistory()
+        layers.append([])
+        currentLayer = layers.count - 1
+        selectedID = nil
+        delegate?.canvasDidChangeLayers()
+    }
+
+    /// Deletes the current layer with its zones; the last remaining layer can't be deleted.
+    func removeCurrentLayer() {
+        guard layers.count > 1 else { NSSound.beep(); return }
+        pushHistory()
+        layers.remove(at: currentLayer)
+        currentLayer = max(currentLayer - 1, 0)
+        selectedID = nil
+        delegate?.canvasDidChangeLayers()
+    }
+
+    private func cycleLayer(by step: Int) {
+        guard layers.count > 1 else { NSSound.beep(); return }
+        selectLayer((currentLayer + step + layers.count) % layers.count)
     }
 
     func addZone(centeredAt point: CGPoint? = nil) {
@@ -97,16 +154,21 @@ final class ZoneCanvasView: NSView {
         delegate?.canvasDidEditManually()
     }
 
+    private var snapshot: Snapshot { Snapshot(layers: layers, currentLayer: currentLayer) }
+
     private func pushHistory() {
-        history.append(zones)
+        history.append(snapshot)
         if history.count > 100 { history.removeFirst() }
     }
 
     private func undo() {
         guard let previous = history.popLast() else { NSSound.beep(); return }
-        zones = previous
+        let layersChanged = previous.layers.count != layers.count || previous.currentLayer != currentLayer
+        layers = previous.layers
+        currentLayer = previous.currentLayer
         selectedID = nil
         delegate?.canvasDidEditManually()
+        if layersChanged { delegate?.canvasDidChangeLayers() }
     }
 
     // MARK: - Mouse
@@ -120,7 +182,7 @@ final class ZoneCanvasView: NSView {
             return
         }
         selectedID = hit.zone.id
-        interaction = Interaction(zoneID: hit.zone.id, edges: hit.edges, startZones: zones, startPoint: point)
+        interaction = Interaction(zoneID: hit.zone.id, edges: hit.edges, start: snapshot, startPoint: point)
         updateCursor(at: point)
     }
 
@@ -135,20 +197,23 @@ final class ZoneCanvasView: NSView {
             ? (x: Double(Self.magnetDistance / area.width), y: Double(Self.magnetDistance / area.height))
             : (x: 0.0, y: 0.0)
 
+        let startZones = interaction.start.layers[interaction.start.currentLayer]
         if interaction.edges.isEmpty {
-            zones = ZoneEditing.move(interaction.zoneID, in: interaction.startZones, dx: dx, dy: dy, threshold: threshold)
+            zones = ZoneEditing.move(interaction.zoneID, in: startZones, dx: dx, dy: dy, threshold: threshold,
+                                     reference: referenceZones)
         } else {
-            zones = ZoneEditing.resize(interaction.zoneID, in: interaction.startZones, edges: interaction.edges,
+            zones = ZoneEditing.resize(interaction.zoneID, in: startZones, edges: interaction.edges,
                                        dx: dx, dy: dy, linked: !event.modifierFlags.contains(.option),
                                        threshold: threshold,
                                        minSize: (width: Double(Self.minimumZoneSize / area.width),
-                                                 height: Double(Self.minimumZoneSize / area.height)))
+                                                 height: Double(Self.minimumZoneSize / area.height)),
+                                       reference: referenceZones)
         }
     }
 
     override func mouseUp(with event: NSEvent) {
-        if let interaction, interaction.startZones != zones {
-            history.append(interaction.startZones)
+        if let interaction, interaction.start.layers != layers {
+            history.append(interaction.start)
             delegate?.canvasDidEditManually()
         }
         interaction = nil
@@ -182,6 +247,7 @@ final class ZoneCanvasView: NSView {
         }
         switch event.keyCode {
         case 51, 117: deleteSelected()                      // ⌫, forward delete
+        case 48: cycleLayer(by: event.modifierFlags.contains(.shift) ? -1 : 1)  // ⇥, ⇧⇥
         case 53: delegate?.canvasRequestsCancel()           // esc
         case 36, 76: delegate?.canvasRequestsSave()         // return
         default: super.keyDown(with: event)
@@ -252,6 +318,7 @@ final class ZoneCanvasView: NSView {
         NSColor(white: 1, alpha: 0.35).setStroke()
         border.stroke()
 
+        for zone in referenceZones { drawReference(zone) }
         for (index, zone) in zones.enumerated() where zone.id != selectedID {
             draw(zone, number: index + 1, selected: false)
         }
@@ -259,9 +326,18 @@ final class ZoneCanvasView: NSView {
             draw(zones[index], number: index + 1, selected: true)
         }
         if zones.isEmpty {
-            drawCentered("No zones on this display.\nPick a template or double-click to add one.",
+            drawCentered("No zones on this \(layers.count > 1 ? "layer" : "display").\nPick a template or double-click to add one.",
                          in: area, font: .systemFont(ofSize: 20, weight: .medium), color: NSColor(white: 1, alpha: 0.8))
         }
+    }
+
+    /// A zone of another layer: dashed outline only.
+    private func drawReference(_ zone: Zone) {
+        let path = NSBezierPath(roundedRect: frame(for: zone).insetBy(dx: 3, dy: 3), xRadius: 10, yRadius: 10)
+        path.setLineDash([8, 6], count: 2, phase: 0)
+        path.lineWidth = 1.5
+        NSColor(white: 1, alpha: 0.4).setStroke()
+        path.stroke()
     }
 
     private func draw(_ zone: Zone, number: Int, selected: Bool) {

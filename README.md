@@ -19,12 +19,17 @@ shortcuts to learn.
   the window; on release the window snaps to the highlighted one. Releasing the key before the mouse cancels
   the snap.
 - **Combine zones**: also hold **⌃ Control** and move across several zones to merge them into a single area.
+- **Overlapping zones, in layers**: a display can have several layers of zones, and zones in different layers
+  can overlap (e.g. three columns plus the two halves of the screen). While dragging, one layer is shown at a
+  time: press **⌘ Command** to switch to the next one.
 - **Size restore**: a snapped window goes back to its previous size when you drag it away.
 - **Full-screen visual editor** on the chosen display:
   - starting templates: Columns, Rows, Grid, Priority (large center zone, great for ultrawides);
   - drag zones to move them and their edges to resize them, snapping to the other zones' edges;
   - shared edges move together, like grid dividers (hold ⌥ to move only the zone's own edge);
   - right-click to split into columns or rows, duplicate, delete; double-click empty space to add a zone;
+  - layers: **+** adds one, **−** deletes the current one, ⇥ switches between them; the other layers are drawn
+    as dashed outlines and their edges attract the zones you move;
   - ⌘Z undo, ↩ save, esc exit without saving.
 - **Adjustable spacing** between zones and from the screen edges.
 - **Windows back on their display**: many monitors disconnect while the Mac sleeps, and macOS piles their
@@ -75,6 +80,7 @@ The menu bar icon lets you turn zones on and off, open the editor for each displ
 | --- | --- |
 | Key to use zones (or "none" to keep them always active) | ⇧ Shift |
 | Key to combine zones | ⌃ Control |
+| Key to switch layer | ⌘ Command |
 | Spacing between zones | 8 pt |
 | Show zones on all displays | yes |
 | Restore the original size outside a zone | yes |
@@ -94,11 +100,16 @@ id = 7D8D3FC7-5ADC-4AA2-84C5-73B58E04C845
      30      0     40    100
      70      0     30     50
      70     50     30     50
+---  # layer 2
+      0      0     50    100
+     50      0     50    100
 ```
 
 - Values are **percentages of the usable screen area** (menu bar and Dock excluded), origin at the top-left.
   Decimals (`33.3` or `33,3`) and a `%` sign are allowed; anything after `#` is a comment.
-- The number shown on each zone is the position of its line. A display with no lines has no zones.
+- The number shown on each zone is the position of its line in its layer. A display with no lines has no zones.
+- A `---` line starts a new layer: zones in different layers can overlap. Without `---` lines a display has a
+  single layer.
 - Changes apply **as soon as you save**. If the file has an error, the menu and the settings show the line
   and the reason, and the last valid zones stay active.
 - When **a display is connected or disconnected** the file is rewritten from scratch: connected displays are
@@ -153,8 +164,8 @@ scripts/                  build, run, local signing certificate, icon generation
    back to `CGWindowList`) and records its frame as seen by the window server: the frame reported through
    Accessibility comes from the owning app and lags behind during a drag. If the position changes but the size
    doesn't, the window is being dragged (not a text selection or a resize).
-3. While the key is held it shows the zones right below the dragged window and highlights the one under the
-   cursor.
+3. While the key is held it shows the zones of the current layer right below the dragged window and
+   highlights the one under the cursor; the layer key switches the display under the cursor to its next layer.
 4. On release it sets position and size through the Accessibility API (and applies them again after 100 ms
    for apps that finish their drag late).
 
